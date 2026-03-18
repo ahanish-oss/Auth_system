@@ -1,0 +1,25 @@
+{
+  "entities": {
+    "users": {
+      "title": "User Profile",
+      "description": "Stores user profile information and role.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Firebase Auth UID" },
+        "name": { "type": "string", "description": "Display name" },
+        "email": { "type": "string", "description": "User email address" },
+        "role": { "type": "string", "enum": ["User", "Admin"], "description": "User role" },
+        "status": { "type": "string", "enum": ["Active", "Locked"], "description": "User account status" },
+        "lastActive": { "type": "string", "format": "date-time", "description": "Last activity timestamp" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Account creation timestamp" }
+      },
+      "required": ["uid", "name", "email", "role", "status"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "users",
+      "description": "User profile document"
+    }
+  }
+}

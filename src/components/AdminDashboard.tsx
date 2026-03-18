@@ -1,0 +1,688 @@
+import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { motion } from 'motion/react';
+import { 
+  Users, 
+  Shield, 
+  Trash2, 
+  UserPlus, 
+  Search, 
+  Filter, 
+  ArrowLeft, 
+  MoreVertical,
+  Lock,
+  Unlock,
+  Activity,
+  UserCheck,
+  UserX,
+  ShieldAlert,
+  LogOut,
+  Settings,
+  Bell,
+  Layout,
+  Database,
+  Cpu,
+  Globe,
+  Link2,
+  HelpCircle,
+  Key,
+  Clock,
+  CheckCircle2,
+  AlertTriangle,
+  Server,
+  Terminal
+} from 'lucide-react';
+import { 
+  collection, 
+  onSnapshot, 
+  doc, 
+  updateDoc, 
+  deleteDoc, 
+  query, 
+  orderBy,
+  getDocs
+} from 'firebase/firestore';
+import { signOut } from 'firebase/auth';
+import { auth, db } from '../firebase';
+import toast from 'react-hot-toast';
+
+enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
+
+interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: {
+    userId: string | undefined;
+    email: string | null | undefined;
+    emailVerified: boolean | undefined;
+    isAnonymous: boolean | undefined;
+    tenantId: string | null | undefined;
+    providerInfo: {
+      providerId: string;
+      displayName: string | null;
+      email: string | null;
+      photoUrl: string | null;
+    }[];
+  }
+}
+
+function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const errInfo: FirestoreErrorInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: auth.currentUser?.uid,
+      email: auth.currentUser?.email,
+      emailVerified: auth.currentUser?.emailVerified,
+      isAnonymous: auth.currentUser?.isAnonymous,
+      tenantId: auth.currentUser?.tenantId,
+      providerInfo: auth.currentUser?.providerData.map(provider => ({
+        providerId: provider.providerId,
+        displayName: provider.displayName,
+        email: provider.email,
+        photoUrl: provider.photoURL
+      })) || []
+    },
+    operationType,
+    path
+  }
+  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  throw new Error(JSON.stringify(errInfo));
+}
+
+interface UserProfile {
+  uid: string;
+  name: string;
+  email: string;
+  role: 'User' | 'Admin';
+  status: 'Active' | 'Locked';
+  createdAt: string;
+  lastActive?: string;
+}
+
+export default function AdminDashboard() {
+  const navigate = useNavigate();
+  const [users, setUsers] = useState<UserProfile[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filterRole, setFilterRole] = useState<'All' | 'User' | 'Admin'>('All');
+  const [stats, setStats] = useState({
+    total: 0,
+    active: 0,
+    admins: 0
+  });
+
+  useEffect(() => {
+    const q = query(collection(db, 'users'), orderBy('createdAt', 'desc'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const usersData = snapshot.docs.map(doc => ({
+        ...doc.data(),
+        uid: doc.id
+      })) as UserProfile[];
+      
+      setUsers(usersData);
+      
+      // Calculate stats
+      setStats({
+        total: usersData.length,
+        active: usersData.filter(u => u.status === 'Active').length,
+        admins: usersData.filter(u => u.role === 'Admin').length
+      });
+      
+      setLoading(false);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'users');
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  const handleToggleRole = async (user: UserProfile) => {
+    if (user.uid === auth.currentUser?.uid) {
+      toast.error("You cannot change your own role!");
+      return;
+    }
+    const newRole = user.role === 'Admin' ? 'User' : 'Admin';
+    try {
+      await updateDoc(doc(db, 'users', user.uid), { role: newRole });
+      toast.success(`Role updated to ${newRole}`);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `users/${user.uid}`);
+    }
+  };
+
+  const handleToggleStatus = async (user: UserProfile) => {
+    const newStatus = user.status === 'Locked' ? 'Active' : 'Locked';
+    try {
+      await updateDoc(doc(db, 'users', user.uid), { status: newStatus });
+      toast.success(`User ${newStatus === 'Locked' ? 'Locked' : 'Unlocked'}`);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `users/${user.uid}`);
+    }
+  };
+
+  const handleDeleteUser = async (uid: string) => {
+    if (uid === auth.currentUser?.uid) {
+      toast.error("You cannot delete yourself!");
+      return;
+    }
+    
+    if (!window.confirm("Are you sure you want to delete this user? This action cannot be undone.")) {
+      return;
+    }
+
+    try {
+      await deleteDoc(doc(db, 'users', uid));
+      toast.success("User deleted successfully.");
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, `users/${uid}`);
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+      navigate('/login');
+      toast.success("Logged out successfully.");
+    } catch (error) {
+      toast.error("Failed to logout.");
+    }
+  };
+
+  const filteredUsers = users.filter(user => {
+    const matchesSearch = user.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                         user.email.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesFilter = filterRole === 'All' || user.role === filterRole;
+    return matchesSearch && matchesFilter;
+  });
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-[#F8FAFC] flex items-center justify-center">
+        <div className="w-8 h-8 border-4 border-[#0A0A0A] border-t-transparent rounded-full animate-spin"></div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-[#F8FAFC] text-[#0F172A] font-sans">
+      {/* Header */}
+      <nav className="sticky top-0 z-40 w-full bg-white/80 backdrop-blur-md border-b border-[#E2E8F0]">
+        <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
+          <motion.div 
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
+            className="flex items-center gap-2"
+          >
+            <ShieldAlert className="text-[#0A0A0A]" size={24} />
+            <span className="font-bold text-[20px] tracking-tight"> | Admin Portal </span>
+          </motion.div>
+          <motion.div 
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            className="flex items-center gap-4"
+          >
+            <button className="p-2 text-[#64748B] hover:text-[#0F172A] transition-colors relative group">
+              <Bell size={20} />
+              <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full border-2 border-white group-hover:scale-110 transition-transform"></span>
+            </button>
+            <div className="h-8 w-[1px] bg-[#E2E8F0] mx-2"></div>
+            <button 
+              onClick={handleLogout}
+              className="flex items-center gap-2 text-[#64748B] hover:text-[#0F172A] font-medium transition-colors text-[14px]"
+            >
+              <LogOut size={18} /> Logout
+            </button>
+          </motion.div>
+        </div>
+      </nav>
+
+      <main className="max-w-7xl mx-auto px-6 py-10">
+        {/* Welcome Section */}
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mb-10"
+        >
+          <h1 className="text-3xl font-bold tracking-tight mb-2">System Overview</h1>
+          <p className="text-[#64748B]">Monitor user activity, manage permissions, and track system health.</p>
+        </motion.div>
+
+        {/* Stats Grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
+          <StatCard 
+            icon={<Users size={24} />}
+            label="Total Users"
+            value={stats.total}
+            color="bg-blue-50 text-blue-600"
+            delay={0.1}
+          />
+          <StatCard 
+            icon={<UserCheck size={24} />}
+            label="Active Users"
+            value={stats.active}
+            color="bg-green-50 text-green-600"
+            delay={0.2}
+          />
+          <StatCard 
+            icon={<Shield size={24} />}
+            label="Admins"
+            value={stats.admins}
+            color="bg-purple-50 text-purple-600"
+            delay={0.3}
+          />
+          <StatCard 
+            icon={<AlertTriangle size={24} />}
+            label="Security Alerts"
+            value={0}
+            color="bg-red-50 text-red-600"
+            delay={0.4}
+          />
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
+          {/* Main Content Area */}
+          <div className="lg:col-span-2 space-y-10">
+            {/* User Management Table */}
+            <motion.div 
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.5 }}
+              className="bg-white rounded-[24px] border border-[#E2E8F0] shadow-sm overflow-hidden"
+            >
+              <div className="p-6 border-b border-[#E2E8F0] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <h2 className="text-[18px] font-bold flex items-center gap-2">
+                  <Users size={20} className="text-[#64748B]" /> User Management
+                </h2>
+                
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[#94A3B8]" size={16} />
+                    <input 
+                      type="text"
+                      placeholder="Search users..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="pl-10 pr-4 h-[38px] bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl text-[13px] focus:outline-none focus:ring-2 focus:ring-[#0A0A0A]/5 focus:border-[#0A0A0A] w-full sm:w-[180px]"
+                    />
+                  </div>
+                  
+                  <select 
+                    value={filterRole}
+                    onChange={(e) => setFilterRole(e.target.value as any)}
+                    className="h-[38px] px-3 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl text-[13px] focus:outline-none"
+                  >
+                    <option value="All">All Roles</option>
+                    <option value="User">Users</option>
+                    <option value="Admin">Admins</option>
+                  </select>
+
+                  <button className="h-[38px] px-4 bg-[#0A0A0A] text-white rounded-xl text-[13px] font-semibold flex items-center gap-2 hover:bg-[#262626] transition-all">
+                    <UserPlus size={16} /> Add User
+                  </button>
+                </div>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-[#F8FAFC] text-[#64748B] text-[12px] font-bold uppercase tracking-wider">
+                      <th className="px-6 py-4">User</th>
+                      <th className="px-6 py-4">Role</th>
+                      <th className="px-6 py-4">Status</th>
+                      <th className="px-6 py-4">Joined</th>
+                      <th className="px-6 py-4 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#F1F5F9]">
+                    {filteredUsers.map((user) => (
+                      <tr key={user.uid} className="hover:bg-[#F8FAFC] transition-colors group">
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-3">
+                            <div className="w-9 h-9 bg-[#F1F5F9] rounded-full flex items-center justify-center font-bold text-[#0A0A0A] text-[13px]">
+                              {user.name.charAt(0)}
+                            </div>
+                            <div>
+                              <p className="font-semibold text-[14px]">{user.name}</p>
+                              <p className="text-[12px] text-[#64748B]">{user.email}</p>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-tight ${
+                            user.role === 'Admin' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'
+                          }`}>
+                            {user.role}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-1.5">
+                            <div className={`w-2 h-2 rounded-full ${user.status === 'Active' ? 'bg-green-500' : 'bg-red-500'}`} />
+                            <span className="text-[13px] font-medium">{user.status}</span>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 text-[13px] text-[#64748B]">
+                          {new Date(user.createdAt).toLocaleDateString()}
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            <button 
+                              onClick={() => handleToggleStatus(user)}
+                              title={user.status === 'Locked' ? 'Unlock User' : 'Lock User'}
+                              className={`p-2 rounded-lg transition-colors ${
+                                user.status === 'Locked' ? 'text-green-600 hover:bg-green-50' : 'text-orange-600 hover:bg-orange-50'
+                              }`}
+                            >
+                              {user.status === 'Locked' ? <Unlock size={16} /> : <Lock size={16} />}
+                            </button>
+                            <button 
+                              onClick={() => handleToggleRole(user)}
+                              title="Change Role"
+                              className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                            >
+                              <Shield size={16} />
+                            </button>
+                            <button 
+                              onClick={() => handleDeleteUser(user.uid)}
+                              title="Delete User"
+                              className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                    {filteredUsers.length === 0 && (
+                      <tr>
+                        <td colSpan={5} className="px-6 py-12 text-center text-[#64748B]">
+                          <div className="flex flex-col items-center gap-2">
+                            <Search size={32} className="opacity-20" />
+                            <p>No users found matching your criteria</p>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </motion.div>
+
+            {/* System Logs / Audit Trail */}
+            <motion.div 
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.6 }}
+              className="bg-white rounded-[24px] border border-[#E2E8F0] shadow-sm overflow-hidden"
+            >
+              <div className="p-6 border-b border-[#E2E8F0] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <h2 className="text-[18px] font-bold flex items-center gap-2">
+                  <Terminal size={20} className="text-[#64748B]" /> Audit Logs
+                </h2>
+                <button className="text-[13px] font-bold text-blue-600 hover:underline">View All Logs</button>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-[#F8FAFC] text-[#64748B] text-[12px] font-bold uppercase tracking-wider">
+                      <th className="px-6 py-4">Event</th>
+                      <th className="px-6 py-4">User</th>
+                      <th className="px-6 py-4">IP Address</th>
+                      <th className="px-6 py-4">Timestamp</th>
+                      <th className="px-6 py-4 text-right">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#F1F5F9]">
+                    <AuditRow 
+                      event="User Role Updated" 
+                      user="Admin" 
+                      ip="192.168.1.1" 
+                      time="10 mins ago" 
+                      status="Success" 
+                    />
+                    <AuditRow 
+                      event="Failed Login Attempt" 
+                      user="unknown@mail.com" 
+                      ip="45.12.33.102" 
+                      time="45 mins ago" 
+                      status="Warning" 
+                    />
+                    <AuditRow 
+                      event="Database Backup" 
+                      user="System" 
+                      ip="Internal" 
+                      time="4 hours ago" 
+                      status="Success" 
+                    />
+                  </tbody>
+                </table>
+              </div>
+            </motion.div>
+
+            {/* Activity & Health Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              <motion.div 
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.7 }}
+                className="bg-white rounded-[24px] border border-[#E2E8F0] p-8 shadow-sm"
+              >
+                <h2 className="text-[18px] font-bold flex items-center gap-2 mb-6">
+                  <Activity size={20} className="text-[#64748B]" /> Recent Activity
+                </h2>
+                <div className="space-y-6">
+                  <ActivityItem 
+                    user="Hanish" 
+                    action="logged in" 
+                    time="10:30 AM" 
+                    icon={<UserCheck size={14} className="text-green-600" />}
+                  />
+                  <ActivityItem 
+                    user="John Doe" 
+                    action="changed password" 
+                    time="09:15 AM" 
+                    icon={<Lock size={14} className="text-blue-600" />}
+                  />
+                  <ActivityItem 
+                    user="System" 
+                    action="backup completed" 
+                    time="04:00 AM" 
+                    icon={<Shield size={14} className="text-purple-600" />}
+                  />
+                </div>
+              </motion.div>
+
+              <motion.div 
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.8 }}
+                className="bg-[#0A0A0A] rounded-[24px] p-8 text-white shadow-xl"
+              >
+                <h2 className="text-[18px] font-bold flex items-center gap-2 mb-6">
+                  <Server size={20} className="text-white/60" /> Infrastructure Health
+                </h2>
+                <div className="space-y-6">
+                  <div className="flex items-center justify-between">
+                    <span className="text-white/60 text-[14px]">Database Status</span>
+                    <span className="text-green-400 font-bold text-[14px]">Operational</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-white/60 text-[14px]">Auth Service</span>
+                    <span className="text-green-400 font-bold text-[14px]">Operational</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-white/60 text-[14px]">API Latency</span>
+                    <span className="text-white font-bold text-[14px]">24ms</span>
+                  </div>
+                  <div className="pt-4 border-t border-white/10">
+                    <p className="text-white/40 text-[12px] leading-relaxed">
+                      All systems are performing within normal parameters. No active incidents reported.
+                    </p>
+                  </div>
+                </div>
+              </motion.div>
+            </div>
+          </div>
+
+          {/* Sidebar Area */}
+          <div className="space-y-6">
+            <motion.div 
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 0.9 }}
+              className="bg-white rounded-[24px] border border-[#E2E8F0] p-8 shadow-sm"
+            >
+              <h2 className="text-[18px] font-bold flex items-center gap-2 mb-6">
+                <Shield size={20} className="text-[#64748B]" /> Security Policies
+              </h2>
+              <div className="space-y-4">
+                <div className="p-4 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] hover:bg-[#F1F5F9] transition-colors cursor-pointer group">
+                  <div className="flex items-center justify-between mb-1">
+                    <p className="text-[14px] font-medium">MFA Enforcement</p>
+                    <Shield size={14} className="text-[#94A3B8] group-hover:text-[#0A0A0A] transition-colors" />
+                  </div>
+                  <p className="text-[#64748B] text-[12px] mb-3">Enforce MFA for all admin accounts</p>
+                  <button className="text-[12px] font-bold text-blue-600 hover:underline">Configure</button>
+                </div>
+                <div className="p-4 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] hover:bg-[#F1F5F9] transition-colors cursor-pointer group">
+                  <div className="flex items-center justify-between mb-1">
+                    <p className="text-[14px] font-medium">Password Policy</p>
+                    <Lock size={14} className="text-[#94A3B8] group-hover:text-[#0A0A0A] transition-colors" />
+                  </div>
+                  <p className="text-[#64748B] text-[12px] mb-3">Min 12 chars, special symbols</p>
+                  <button className="text-[12px] font-bold text-blue-600 hover:underline">Update</button>
+                </div>
+              </div>
+            </motion.div>
+
+            <motion.div 
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 1.0 }}
+              className="bg-white rounded-[24px] border border-[#E2E8F0] p-8 shadow-sm"
+            >
+              <h2 className="text-[18px] font-bold flex items-center gap-2 mb-6">
+                <Settings size={20} className="text-[#64748B]" /> Quick Actions
+              </h2>
+              <div className="grid grid-cols-2 gap-3">
+                <ActionButton icon={<UserPlus size={18} />} label="Add User" />
+                <ActionButton icon={<Database size={18} />} label="Backup" />
+                <ActionButton icon={<Cpu size={18} />} label="Logs" />
+                <ActionButton icon={<Globe size={18} />} label="Settings" />
+              </div>
+            </motion.div>
+
+            <motion.div 
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 1.1 }}
+              className="bg-white rounded-[24px] border border-[#E2E8F0] p-8 shadow-sm"
+            >
+              <h2 className="text-[18px] font-bold flex items-center gap-2 mb-4">
+                <Database size={20} className="text-[#64748B]" /> Data Management
+              </h2>
+              <p className="text-[14px] text-[#64748B] mb-6 leading-relaxed">
+                Manage system data, export user lists, and perform database maintenance.
+              </p>
+              <div className="space-y-3">
+                <button className="w-full py-3 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl text-[14px] font-bold hover:bg-[#F1F5F9] transition-all flex items-center justify-center gap-2">
+                  <Link2 size={16} /> Export User Data
+                </button>
+                <button className="w-full py-3 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl text-[14px] font-bold hover:bg-[#F1F5F9] transition-all flex items-center justify-center gap-2">
+                  <Key size={16} /> API Keys
+                </button>
+              </div>
+            </motion.div>
+
+            <motion.div 
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 1.2 }}
+              className="bg-orange-600 rounded-[24px] p-8 text-white shadow-lg"
+            >
+              <h2 className="text-[18px] font-bold mb-4 flex items-center gap-2">
+                <AlertTriangle size={20} /> System Alert
+              </h2>
+              <p className="text-white/80 text-[14px] leading-relaxed mb-4">
+                A scheduled maintenance is planned for next Sunday at 02:00 AM UTC.
+              </p>
+              <button className="text-[14px] font-bold underline">Notify Users</button>
+            </motion.div>
+          </div>
+        </div>
+      </main>
+    </div>
+  );
+}
+
+function StatCard({ icon, label, value, color, delay = 0 }: { icon: any, label: string, value: number, color: string, delay?: number }) {
+  return (
+    <motion.div 
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay }}
+      className="bg-white rounded-[24px] border border-[#E2E8F0] p-6 shadow-sm hover:shadow-md transition-shadow"
+    >
+      <div className={`w-12 h-12 ${color} rounded-2xl flex items-center justify-center mb-4`}>
+        {icon}
+      </div>
+      <p className="text-[#64748B] text-[14px] font-medium mb-1">{label}</p>
+      <p className="text-[28px] font-bold tracking-tight">{value}</p>
+    </motion.div>
+  );
+}
+
+function ActionButton({ icon, label }: { icon: any, label: string }) {
+  return (
+    <button className="flex flex-col items-center justify-center gap-2 p-4 rounded-2xl bg-[#F8FAFC] border border-[#E2E8F0] hover:bg-[#F1F5F9] hover:border-[#CBD5E1] transition-all group">
+      <div className="text-[#64748B] group-hover:text-[#0A0A0A] transition-colors">
+        {icon}
+      </div>
+      <span className="text-[12px] font-bold text-[#64748B] group-hover:text-[#0A0A0A] transition-colors">{label}</span>
+    </button>
+  );
+}
+
+function AuditRow({ event, user, ip, time, status }: { event: string, user: string, ip: string, time: string, status: string }) {
+  return (
+    <tr className="hover:bg-[#F8FAFC] transition-colors group">
+      <td className="px-6 py-4">
+        <p className="font-semibold text-[14px]">{event}</p>
+      </td>
+      <td className="px-6 py-4 text-[13px] text-[#64748B]">{user}</td>
+      <td className="px-6 py-4 text-[13px] text-[#64748B] font-mono">{ip}</td>
+      <td className="px-6 py-4 text-[13px] text-[#64748B]">{time}</td>
+      <td className="px-6 py-4 text-right">
+        <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-tight ${
+          status === 'Success' ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'
+        }`}>
+          {status}
+        </span>
+      </td>
+    </tr>
+  );
+}
+
+function ActivityItem({ user, action, time, icon }: { user: string, action: string, time: string, icon: any }) {
+  return (
+    <div className="flex items-start gap-3 group">
+      <div className="w-8 h-8 bg-[#F8FAFC] rounded-lg flex items-center justify-center shrink-0 mt-0.5 group-hover:bg-[#F1F5F9] transition-colors">
+        {icon}
+      </div>
+      <div>
+        <p className="text-[14px] font-medium text-[#0F172A]">
+          <span className="font-bold">{user}</span> {action}
+        </p>
+        <p className="text-[12px] text-[#94A3B8]">{time}</p>
+      </div>
+    </div>
+  );
+}

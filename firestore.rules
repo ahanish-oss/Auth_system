@@ -1,0 +1,78 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Document ID: {userId} (Firebase Auth UID)
+    // Fields:
+    //   - uid: string (required) - Firebase Auth UID
+    //   - name: string (required, 1-50 chars) - Display name
+    //   - email: string (required) - User email address
+    //   - role: string (required, enum: ['User', 'Admin']) - User role
+    //   - status: string (required, enum: ['Active', 'Locked']) - Account status
+    //   - lastActive: timestamp (optional) - Last activity time
+    //   - createdAt: timestamp (optional) - Account creation time
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (request.auth.token.email.matches("(?i)ahanish@karunya\\.edu\\.in") ||
+         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role.matches("(?i)Admin")));
+    }
+
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    function isValidUser(data) {
+      return data.keys().hasOnly(['uid', 'name', 'email', 'role', 'status', 'lastActive', 'createdAt']) &&
+             data.uid is string &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 50 &&
+             data.email is string && isValidEmail(data.email) &&
+             data.role in ['User', 'Admin'] &&
+             data.status in ['Active', 'Locked'];
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      // Users can read their own profile, Admins can read all
+      allow get: if isOwner(userId) || isAdmin();
+      allow list: if isAdmin();
+      
+      // Users can create their own profile
+      // - For this prototype, we allow users to choose their role during signup
+      allow create: if isOwner(userId) && 
+                      isValidUser(request.resource.data) && 
+                      request.resource.data.status == 'Active';
+      
+      // Users can update their own profile (except role/status), Admins can update everything
+      allow update: if (isOwner(userId) && 
+                       isValidUser(request.resource.data) && 
+                       request.resource.data.role == resource.data.role &&
+                       request.resource.data.status == resource.data.status) ||
+                      (isAdmin() && isValidUser(request.resource.data));
+
+      // Only Admins can delete users
+      allow delete: if isAdmin();
+    }
+  }
+}
