@@ -259,16 +259,7 @@ export default function UserDashboard() {
                 New Session
               </button>
               
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30" size={14} />
-                <input 
-                  type="text"
-                  placeholder="Search sessions..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full bg-white/5 border border-white/10 rounded-lg pl-9 pr-3 py-2 text-[13px] focus:outline-none focus:ring-1 focus:ring-white/20 placeholder:text-white/20"
-                />
-              </div>
+   
             </div>
 
             {/* Recent Sessions List */}
@@ -290,18 +281,6 @@ export default function UserDashboard() {
                 <span className={`text-[13px] font-medium ${view === 'dashboard' ? 'text-white' : 'text-white/80'}`}>Dashboard</span>
               </button>
 
-              <div className="px-3 py-2 mt-4 text-[11px] font-bold text-white/40 uppercase tracking-wider flex items-center justify-between">
-                <span>Recent Sessions</span>
-                {chats.length > 0 && (
-                  <button 
-                    onClick={handleClearAll}
-                    className="hover:text-red-400 transition-colors"
-                    title="Clear all conversations"
-                  >
-                    <Activity size={12} />
-                  </button>
-                )}
-              </div>
               {filteredChats.map((chat) => (
                 <div key={chat.id} className="relative group/item">
                   {editingChatId === chat.id ? (
@@ -356,25 +335,11 @@ export default function UserDashboard() {
                   )}
                 </div>
               ))}
-              {filteredChats.length === 0 && (
-                <div className="px-3 py-4 text-center text-[12px] text-white/20">
-                  No sessions found
-                </div>
-              )}
+             
             </div>
 
             {/* Sidebar Footer / User Profile */}
             <div className="p-4 border-t border-white/10 space-y-2">
-              <button className="w-full flex items-center gap-3 px-3 py-3 rounded-lg bg-gradient-to-r from-purple-600/20 to-blue-600/20 border border-white/10 hover:border-white/20 transition-all text-left group">
-                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center shrink-0">
-                  <Cpu size={16} className="text-white" />
-                </div>
-                <div className="flex-1">
-                  <p className="text-[13px] font-bold text-white">Upgrade to Pro</p>
-                  <p className="text-[11px] text-white/40">Get advanced AI features</p>
-                </div>
-              </button>
-
               <div className="flex items-center gap-3 p-2 rounded-lg hover:bg-white/5 transition-colors cursor-pointer group">
                 <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-[12px] font-bold">
                   {profile?.name.charAt(0)}
