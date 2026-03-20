@@ -103,7 +103,27 @@ const AdminRoute = ({ children }: { children: ReactNode }) => {
   if (!user) return <Navigate to="/login" replace />;
   
   if (!isAdmin) {
-    return <Navigate to="/dashboard" replace />;
+    return (
+      <div className="min-h-screen bg-[#F8FAFC] flex items-center justify-center px-6">
+        <div className="max-w-md w-full">
+          <div className="bg-white rounded-[24px] border border-[#E2E8F0] shadow-sm p-8 text-center">
+            <div className="w-16 h-16 bg-red-50 rounded-2xl flex items-center justify-center mx-auto mb-6">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#DC2626" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 22C6.477 22 2 17.523 2 12S6.477 2 12 2s10 4.477 10 10-4.477 10-10 10zm0-14v4m0 4v.01" />
+              </svg>
+            </div>
+            <h1 className="text-2xl font-bold text-[#0F172A] mb-2">Access Denied</h1>
+            <p className="text-[#64748B] text-[15px] mb-8">You do not have the required permissions to access the admin panel. Please contact your administrator if you believe this is an error.</p>
+            <button 
+              onClick={() => window.location.href = '/dashboard'}
+              className="w-full py-3 bg-[#0A0A0A] text-white rounded-xl font-semibold hover:bg-[#262626] transition-colors"
+            >
+              Return to Dashboard
+            </button>
+          </div>
+        </div>
+      </div>
+    );
   }
   
   return <>{children}</>;

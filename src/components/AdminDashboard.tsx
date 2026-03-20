@@ -30,7 +30,9 @@ import {
   CheckCircle2,
   AlertTriangle,
   Server,
-  Terminal
+  Terminal,
+  PanelLeftClose,
+  PanelLeftOpen
 } from 'lucide-react';
 import { 
   collection, 
@@ -113,6 +115,7 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterRole, setFilterRole] = useState<'All' | 'User' | 'Admin'>('All');
+  const [sidebarOpen, setSidebarOpen] = useState(true);
   const [stats, setStats] = useState({
     total: 0,
     active: 0,
@@ -213,39 +216,99 @@ export default function AdminDashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] text-[#0F172A] font-sans">
-      {/* Header */}
-      <nav className="sticky top-0 z-40 w-full bg-white/80 backdrop-blur-md border-b border-[#E2E8F0]">
-        <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
-          <motion.div 
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            className="flex items-center gap-2"
+    <div className="flex h-screen bg-[#F8FAFC] text-[#0F172A] font-sans overflow-hidden">
+      {/* Sidebar */}
+      <motion.aside
+        animate={{ width: sidebarOpen ? 260 : 80 }}
+        transition={{ type: "spring", damping: 20, stiffness: 100 }}
+        className="fixed inset-y-0 left-0 z-50 bg-[#0A0A0A] text-white flex flex-col lg:relative lg:translate-x-0"
+      >
+        {/* Auth System Header */}
+        <div className="p-4 border-b border-white/10 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Shield size={20} className="text-blue-400 shrink-0" />
+            {sidebarOpen && <span className="text-[14px] font-semibold text-white">Admin Panel</span>}
+          </div>
+          <button 
+            onClick={() => setSidebarOpen(!sidebarOpen)}
+            className="p-2 text-white/60 hover:text-white transition-colors"
           >
-            <ShieldAlert className="text-[#0A0A0A]" size={24} />
-            <span className="font-bold text-[20px] tracking-tight"> | Admin Portal </span>
-          </motion.div>
-          <motion.div 
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            className="flex items-center gap-4"
-          >
-            <button className="p-2 text-[#64748B] hover:text-[#0F172A] transition-colors relative group">
-              <Bell size={20} />
-              <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full border-2 border-white group-hover:scale-110 transition-transform"></span>
-            </button>
-            <div className="h-8 w-[1px] bg-[#E2E8F0] mx-2"></div>
-            <button 
-              onClick={handleLogout}
-              className="flex items-center gap-2 text-[#64748B] hover:text-[#0F172A] font-medium transition-colors text-[14px]"
-            >
-              <LogOut size={18} /> Logout
-            </button>
-          </motion.div>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="4" y1="6" x2="20" y2="6" />
+              <line x1="4" y1="12" x2="20" y2="12" />
+              <line x1="4" y1="18" x2="20" y2="18" />
+            </svg>
+          </button>
         </div>
-      </nav>
 
-      <main className="max-w-7xl mx-auto px-6 py-10">
+        {/* Menu Section */}
+        {sidebarOpen && (
+          <div className="flex-1 overflow-y-auto px-2 space-y-1 custom-scrollbar">
+            <div className="px-3 py-2 text-[11px] font-bold text-white/40 uppercase tracking-wider">
+              Menu
+            </div>
+            <button
+              className={`
+                w-full flex items-center gap-3 px-3 py-3 rounded-lg transition-colors group text-left
+                bg-white/10
+              `}
+            >
+              <Layout size={16} className="text-white" />
+              <span className="text-[13px] font-medium text-white">Dashboard</span>
+            </button>
+          </div>
+        )}
+
+        {!sidebarOpen && (
+          <div className="flex-1 overflow-y-auto px-2 space-y-1">
+            <button
+              className="p-3 rounded-lg hover:bg-white/5 transition-colors"
+            >
+              <Layout size={20} className="text-white" />
+            </button>
+          </div>
+        )}
+
+        {/* Logout Button */}
+        <div className={`p-4 border-t border-white/10 ${sidebarOpen ? '' : 'flex justify-center'}`}>
+          <button 
+            onClick={handleLogout}
+            className={`flex items-center gap-3 rounded-lg hover:bg-red-500/10 text-red-400 transition-colors text-[13px] font-medium ${sidebarOpen ? 'w-full px-3 py-2' : 'p-3'}`}
+          >
+            <LogOut size={16} />
+            {sidebarOpen && <span>Logout</span>}
+          </button>
+        </div>
+      </motion.aside>
+
+      {/* Main Content Area */}
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden relative">
+        {/* Header */}
+        <nav className="sticky top-0 z-40 w-full bg-white/80 backdrop-blur-md border-b border-[#E2E8F0]">
+          <div className="px-6 h-16 flex items-center justify-between">
+            <motion.div 
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              className="flex items-center gap-2"
+            >
+              <ShieldAlert className="text-[#0A0A0A]" size={24} />
+              <span className="font-bold text-[20px] tracking-tight"> Admin Portal </span>
+            </motion.div>
+            <motion.div 
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              className="flex items-center gap-4"
+            >
+              <button className="p-2 text-[#64748B] hover:text-[#0F172A] transition-colors relative group">
+                <Bell size={20} />
+                <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full border-2 border-white group-hover:scale-110 transition-transform"></span>
+              </button>
+            </motion.div>
+          </div>
+        </nav>
+
+        <main className="flex-1 overflow-y-auto custom-scrollbar">
+          <div className="max-w-7xl mx-auto px-6 py-10">
         {/* Welcome Section */}
         <motion.div 
           initial={{ opacity: 0, y: 20 }}
@@ -618,7 +681,9 @@ export default function AdminDashboard() {
             </motion.div>
           </div>
         </div>
-      </main>
+          </div>
+        </main>
+      </div>
     </div>
   );
 }
