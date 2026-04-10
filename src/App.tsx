@@ -8,6 +8,8 @@ import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-route
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { doc, getDoc, collection, addDoc, query, where, getDocs, orderBy, limit, onSnapshot } from 'firebase/firestore';
 import { auth, db } from './firebase';
+import { ShieldAlert } from 'lucide-react';
+import { motion } from 'motion/react';
 import AuthForm from './components/AuthForm';
 import EmailVerification from './components/EmailVerification';
 import ForgotPassword from './components/ForgotPassword';
@@ -175,7 +177,7 @@ const AdminRoute = ({ children }: { children: ReactNode }) => {
   if (status === 'Blocked') return <Navigate to="/blocked" replace />;
 
   if (user.email !== ADMIN_EMAIL) {
-    return <Navigate to="/dashboard" replace />;
+    return <AccessDenied />;
   }
   
   return <>{children}</>;
@@ -184,24 +186,33 @@ const AdminRoute = ({ children }: { children: ReactNode }) => {
 const AccessDenied = () => {
   const navigate = useNavigate();
   return (
-    <div className="h-screen bg-[#F8FAFC] flex items-center justify-center p-6">
-      <div className="max-w-md w-full bg-white rounded-[32px] border border-[#E2E8F0] p-10 text-center shadow-xl">
-        <div className="w-20 h-20 bg-orange-50 rounded-full flex items-center justify-center mx-auto mb-6">
-          <svg className="w-10 h-10 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-          </svg>
+    <div className="min-h-screen bg-[#F8FAFC] flex items-center justify-center p-6">
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="max-w-lg w-full bg-white rounded-[40px] border border-[#E2E8F0] p-12 text-center shadow-2xl relative overflow-hidden"
+      >
+        {/* Background Accent */}
+        <div className="absolute top-0 left-0 w-full h-2 bg-red-500" />
+        
+        <div className="w-20 h-20 bg-red-50 rounded-3xl flex items-center justify-center mx-auto mb-8 rotate-3 group-hover:rotate-0 transition-transform">
+          <ShieldAlert size={40} className="text-red-600" />
         </div>
-        <h1 className="text-2xl font-bold text-[#0F172A] mb-4">Access Denied 🚫</h1>
-        <p className="text-[#64748B] mb-8">
-          You are not authorized to access this page. This attempt has been logged for security purposes.
+
+        <h1 className="text-[32px] font-black text-[#0F172A] mb-4 tracking-tight">Access Denied</h1>
+        
+        <p className="text-[#64748B] text-[16px] leading-relaxed mb-10 max-w-[340px] mx-auto">
+          You do not have the required permissions to access the admin panel. 
+          Please contact your administrator if you believe this is an error.
         </p>
+
         <button 
           onClick={() => navigate("/dashboard", { replace: true })}
-          className="w-full h-[52px] bg-[#0A0A0A] text-white rounded-[16px] font-bold hover:bg-[#262626] transition-all"
+          className="w-full h-[64px] bg-[#0A0A0A] text-white rounded-[20px] font-bold text-[16px] hover:bg-[#262626] active:scale-[0.98] transition-all shadow-lg shadow-black/10"
         >
           Return to Dashboard
         </button>
-      </div>
+      </motion.div>
     </div>
   );
 };
