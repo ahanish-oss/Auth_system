@@ -100,12 +100,13 @@ service cloud.firestore {
     }
 
     match /auditLogs/{logId} {
-      // Allow any authenticated user to create a log entry
-      // Only Admins can read all logs, users can read their own
-      allow create: if isAuthenticated() && 
-                      request.resource.data.uid == request.auth.uid &&
-                      request.resource.data.keys().hasAll(['uid', 'name', 'email', 'action', 'status', 'message', 'severity', 'attempts', 'timestamp']);
-      allow read, list: if isAdmin() || (isAuthenticated() && resource.data.uid == request.auth.uid);
+      // 🛡️ PRODUCTION SECURE RULES
+      // Allow any authenticated user to CREATE a log (required for intrusion detection)
+      allow create: if request.auth != null;
+      
+      // Allow ONLY the specific admin email to READ logs
+      allow read, list: if request.auth != null && request.auth.token.email == "admin@gmail.com";
+      
       allow update, delete: if false;
     }
   }

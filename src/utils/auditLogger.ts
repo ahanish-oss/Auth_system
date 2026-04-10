@@ -77,19 +77,47 @@ export const logEvent = async ({
     }
 
     // 3. Log the event
-  await addDoc(collection(db, "auditLogs"), {
-  uid: user.uid,
-  name: user.displayName || "Unknown",
-  email: user.email,
-  action,
-  status,
-  message,
-  severity,
-  attempts,
-  timestamp: new Date().toISOString() // ✅ FIXED
-});
+    const logData = {
+      uid: user.uid,
+      name: user.displayName || user.name || "Unknown User",
+      email: user.email || "no-email@system.com",
+      action,
+      status,
+      message,
+      severity,
+      attempts,
+      timestamp: serverTimestamp()
+    };
+
+    console.log("📝 Attempting to write audit log:", logData);
+
+    const docRef = await addDoc(collection(db, "auditLogs"), logData);
+    console.log("✅ Audit log written successfully with ID:", docRef.id);
 
   } catch (err) {
-    console.error("Logging failed:", err);
+    console.error("❌ Logging failed. This is likely a Firestore permission error:", err);
+  }
+};
+
+export const getAllAuditLogs = async (limitCount = 50) => {
+  try {
+    console.log("📡 Fetching all audit logs (limit:", limitCount, ")...");
+    const q = query(
+      collection(db, "auditLogs"),
+      orderBy("timestamp", "desc"),
+      limit(limitCount)
+    );
+
+    const snapshot = await getDocs(q);
+    const logs = snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data(),
+    })) as unknown as AuditLog[];
+    
+    console.log("✅ Successfully fetched", logs.length, "logs");
+    return logs;
+  } catch (err) {
+    console.error("❌ Failed to fetch audit logs:", err);
+    throw err;
   }
 };

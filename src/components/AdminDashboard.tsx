@@ -175,6 +175,7 @@ export default function AdminDashboard() {
   const [filterRole, setFilterRole] = useState<'All' | 'User' | 'Admin'>('All');
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
+  const [auditError, setAuditError] = useState<string | null>(null);
   const [userActivityLogs, setUserActivityLogs] = useState<UserActivityLog[]>([]);
   const [securityInsights, setSecurityInsights] = useState({
     totalAttempts: 0,
@@ -218,16 +219,24 @@ export default function AdminDashboard() {
   }, []);
 
   useEffect(() => {
+    console.log("🔍 Initializing auditLogs listener...");
     const q = query(collection(db, 'auditLogs'), orderBy('timestamp', 'desc'));
+    
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const logsData = snapshot.docs.map(doc => ({
         ...doc.data(),
         id: doc.id
       })) as AuditLog[];
-      console.log("AUDIT LOGS FETCHED:", logsData); // 🚨 TEMP DEBUG LOG
+      console.log("📊 AUDIT LOGS FETCHED:", logsData.length, "entries");
       setAuditLogs(logsData);
+      setAuditError(null);
     }, (error) => {
-      console.error('Failed to fetch audit logs:', error);
+      console.error('❌ Failed to fetch audit logs:', error);
+      if (error.message.includes('permission')) {
+        setAuditError("Permission Denied: Only the system administrator can view these logs.");
+      } else {
+        setAuditError(error.message);
+      }
     });
 
     return () => unsubscribe();
@@ -660,9 +669,24 @@ export default function AdminDashboard() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[#F1F5F9]">
-                    {auditLogs
-                      .slice(0, 10)
-                      .map((log, idx) => (
+                    {auditError ? (
+                      <tr>
+                        <td colSpan={5} className="px-6 py-12 text-center">
+                          <div className="flex flex-col items-center gap-3">
+                            <ShieldAlert size={32} className="text-red-500" />
+                            <p className="text-red-600 font-medium">{auditError}</p>
+                            <p className="text-[12px] text-[#64748B]">Check Firestore security rules for the 'auditLogs' collection.</p>
+                          </div>
+                        </td>
+                      </tr>
+                    ) : auditLogs.length === 0 ? (
+                      <tr>
+                        <td colSpan={5} className="px-6 py-8 text-center text-[#64748B]">
+                          <p>No activity logs yet</p>
+                        </td>
+                      </tr>
+                    ) : (
+                      auditLogs.slice(0, 10).map((log, idx) => (
                         <AuditRow 
                           key={log.id || idx}
                           event={log.action} 
@@ -675,13 +699,7 @@ export default function AdminDashboard() {
                           message={log.message}
                           severity={log.severity}
                         />
-                      ))}
-                    {auditLogs.length === 0 && (
-                      <tr>
-                        <td colSpan={5} className="px-6 py-8 text-center text-[#64748B]">
-                          <p>No activity logs yet</p>
-                        </td>
-                      </tr>
+                      ))
                     )}
                   </tbody>
                 </table>
