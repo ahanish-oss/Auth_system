@@ -142,14 +142,17 @@ const AdminRoute = ({ children }: { children: ReactNode }) => {
     // Only log once per mount when loading is finished and user is present
     if (!loading && user && !hasLogged) {
       if (user.email !== ADMIN_EMAIL) {
+        // 🚨 LOG UNAUTHORIZED ACCESS
         logEvent({
           user,
           action: "ADMIN_ACCESS_ATTEMPT",
           status: "WARNING",
-          message: "User tried to access admin dashboard via URL",
+          message: "Unauthorized user tried to access admin dashboard",
           severity: "MEDIUM"
         });
+        console.log("Audit Log Created: ADMIN_ACCESS_ATTEMPT", user.email);
       } else {
+        // ✅ LOG ADMIN SUCCESS
         logEvent({
           user,
           action: "ADMIN_ACCESS_SUCCESS",
@@ -157,6 +160,7 @@ const AdminRoute = ({ children }: { children: ReactNode }) => {
           message: "Admin accessed dashboard",
           severity: "LOW"
         });
+        console.log("Audit Log Created: ADMIN_ACCESS_SUCCESS", user.email);
       }
       setHasLogged(true);
     }

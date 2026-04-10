@@ -176,6 +176,7 @@ export default function AdminDashboard() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [auditError, setAuditError] = useState<string | null>(null);
+  const [auditFilter, setAuditFilter] = useState<'ALL' | 'ATTACKS' | 'SUCCESS'>('ALL');
   const [userActivityLogs, setUserActivityLogs] = useState<UserActivityLog[]>([]);
   const [securityInsights, setSecurityInsights] = useState({
     totalAttempts: 0,
@@ -655,7 +656,18 @@ export default function AdminDashboard() {
                 <h2 className="text-[18px] font-bold flex items-center gap-2">
                   <Terminal size={20} className="text-[#64748B]" /> Audit Logs
                 </h2>
-                <button className="text-[13px] font-bold text-blue-600 hover:underline">View All Logs</button>
+                <div className="flex items-center gap-3">
+                  <select 
+                    value={auditFilter}
+                    onChange={(e) => setAuditFilter(e.target.value as any)}
+                    className="text-[13px] font-bold bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-black/5"
+                  >
+                    <option value="ALL">All Logs</option>
+                    <option value="ATTACKS">Only Attacks</option>
+                    <option value="SUCCESS">Only Success</option>
+                  </select>
+                  <button className="text-[13px] font-bold text-blue-600 hover:underline">View All</button>
+                </div>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse">
@@ -686,20 +698,27 @@ export default function AdminDashboard() {
                         </td>
                       </tr>
                     ) : (
-                      auditLogs.slice(0, 10).map((log, idx) => (
-                        <AuditRow 
-                          key={log.id || idx}
-                          event={log.action} 
-                          user={log.name}
-                          email={log.email}
-                          uid={log.uid}
-                          time={getRelativeTime(log.timestamp)} 
-                          attempts={log.attempts}
-                          status={log.status as 'SUCCESS' | 'WARNING' | 'ERROR'} 
-                          message={log.message}
-                          severity={log.severity}
-                        />
-                      ))
+                      auditLogs
+                        .filter(log => {
+                          if (auditFilter === 'ATTACKS') return log.action === 'ADMIN_ACCESS_ATTEMPT';
+                          if (auditFilter === 'SUCCESS') return log.action === 'ADMIN_ACCESS_SUCCESS';
+                          return true;
+                        })
+                        .slice(0, 10)
+                        .map((log, idx) => (
+                          <AuditRow 
+                            key={log.id || idx}
+                            event={log.action} 
+                            user={log.name}
+                            email={log.email}
+                            uid={log.uid}
+                            time={getRelativeTime(log.timestamp)} 
+                            attempts={log.attempts}
+                            status={log.status as 'SUCCESS' | 'WARNING' | 'ERROR'} 
+                            message={log.message}
+                            severity={log.severity}
+                          />
+                        ))
                     )}
                   </tbody>
                 </table>
@@ -982,18 +1001,21 @@ function AuditRow({ event, user, email, uid, time, status, attempts, message, se
     }
   };
 
-  const isAlert = status === 'WARNING' || status === 'ERROR';
   const isAttack = event === "ADMIN_ACCESS_ATTEMPT";
+  const isSuccess = event === "ADMIN_ACCESS_SUCCESS";
+  const isCritical = severity === "CRITICAL";
   
   return (
-    <tr className={`hover:bg-[#F8FAFC] transition-colors group ${isAttack ? 'bg-red-50/50' : ''}`}>
+    <tr className={`hover:bg-[#F8FAFC] transition-colors group ${isAttack ? (isCritical ? 'bg-red-100/50' : 'bg-red-50/50') : ''}`}>
       <td className="px-6 py-4">
         <div className="flex flex-col">
-          <p className={`font-semibold text-[14px] ${isAlert ? 'text-red-600' : 'text-[#0F172A]'}`}>
-            {isAlert ? `⚠️ ${user || 'Unknown'}` : (user || 'Unknown')}
+          <p className={`font-semibold text-[14px] ${isAttack ? 'text-red-600' : isSuccess ? 'text-green-600' : 'text-[#0F172A]'}`}>
+            {isAttack ? `⚠️ ${user || 'Unknown'}` : (user || 'Unknown')}
           </p>
           <div className="flex items-center gap-2">
-            <p className="text-[11px] text-[#64748B]">{event}</p>
+            <p className="text-[11px] text-[#64748B] font-bold">
+              {isSuccess ? "Admin Login" : event}
+            </p>
             {severity && (
               <span className={`text-[9px] uppercase tracking-widest ${getSeverityStyles()}`}>
                 • {severity}
@@ -1001,14 +1023,14 @@ function AuditRow({ event, user, email, uid, time, status, attempts, message, se
             )}
           </div>
           <p className="text-[10px] text-[#94A3B8] mt-0.5">{message}</p>
-          {isAlert && (
+          {isAttack && (
             <p className="text-[10px] font-mono text-red-400 mt-1">UID: {uid}</p>
           )}
         </div>
       </td>
       <td className="px-6 py-4 text-[13px] text-[#64748B]">{email || 'N/A'}</td>
       <td className="px-6 py-4 text-[13px] font-bold text-center">
-        <span className={`inline-block px-2.5 py-1 rounded-lg text-[11px] font-bold ${isAlert ? 'bg-red-600 text-white' : 'bg-[#0A0A0A] text-white'}`}>
+        <span className={`inline-block px-2.5 py-1 rounded-lg text-[11px] font-bold ${isAttack ? 'bg-red-600 text-white' : 'bg-[#0A0A0A] text-white'}`}>
           {attempts}x
         </span>
       </td>
