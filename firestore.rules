@@ -32,6 +32,7 @@ service cloud.firestore {
     function isAdmin() {
       return isAuthenticated() &&
         (request.auth.token.email.matches("(?i)ahanish@karunya\\.edu\\.in") ||
+         request.auth.token.email.matches("(?i)admin@gmail\\.com") ||
          (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role.matches("(?i)Admin")));
     }
@@ -46,7 +47,7 @@ service cloud.firestore {
              data.name is string && data.name.size() > 0 && data.name.size() <= 50 &&
              data.email is string && isValidEmail(data.email) &&
              data.role in ['User', 'Admin'] &&
-             data.status in ['Active', 'Locked'];
+             data.status in ['Active', 'Blocked'];
     }
 
     // ===============================================================
@@ -59,20 +60,53 @@ service cloud.firestore {
       allow list: if isAdmin();
       
       // Users can create their own profile
-      // - For this prototype, we allow users to choose their role during signup
       allow create: if isOwner(userId) && 
                       isValidUser(request.resource.data) && 
                       request.resource.data.status == 'Active';
       
-      // Users can update their own profile (except role/status), Admins can update everything
+      // Users can update their own profile (except role/status, unless self-blocking), Admins can update everything
       allow update: if (isOwner(userId) && 
                        isValidUser(request.resource.data) && 
                        request.resource.data.role == resource.data.role &&
-                       request.resource.data.status == resource.data.status) ||
+                       (request.resource.data.status == resource.data.status || request.resource.data.status == 'Blocked')) ||
                       (isAdmin() && isValidUser(request.resource.data));
 
       // Only Admins can delete users
       allow delete: if isAdmin();
+    }
+
+    match /otps/{email} {
+      // Deny all client-side access. Only server-side (Admin SDK) can access.
+      allow read, write: if false;
+    }
+
+    match /adminAccessLogs/{logId} {
+      // Allow any authenticated user to create a log entry
+      // Only Admins can read all logs, users can read their own
+      allow create: if isAuthenticated() && 
+                      request.resource.data.uid == request.auth.uid &&
+                      request.resource.data.keys().hasAll(['uid', 'email', 'name', 'role', 'timestamp', 'success', 'reason', 'attemptCount']);
+      allow read, list: if isAdmin() || (isAuthenticated() && resource.data.uid == request.auth.uid);
+      allow update, delete: if false;
+    }
+
+    match /userActivityLogs/{logId} {
+      // Allow any authenticated user to create a log entry for themselves
+      // Only Admins can read all logs, users can read their own
+      allow create: if isAuthenticated() && 
+                      request.resource.data.uid == request.auth.uid;
+      allow read, list: if isAdmin() || (isAuthenticated() && resource.data.uid == request.auth.uid);
+      allow update, delete: if false;
+    }
+
+    match /auditLogs/{logId} {
+      // Allow any authenticated user to create a log entry
+      // Only Admins can read all logs, users can read their own
+      allow create: if isAuthenticated() && 
+                      request.resource.data.uid == request.auth.uid &&
+                      request.resource.data.keys().hasAll(['uid', 'name', 'email', 'action', 'status', 'message', 'attempts', 'timestamp']);
+      allow read, list: if isAdmin() || (isAuthenticated() && resource.data.uid == request.auth.uid);
+      allow update, delete: if false;
     }
   }
 }

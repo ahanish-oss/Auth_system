@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { 
@@ -42,10 +42,13 @@ import {
   deleteDoc, 
   query, 
   orderBy,
-  getDocs
+  getDocs,
+  addDoc,
+  Timestamp
 } from 'firebase/firestore';
 import { signOut } from 'firebase/auth';
 import { auth, db } from '../firebase';
+import { getSecurityInsights } from '../utils/securityLogger';
 import toast from 'react-hot-toast';
 
 enum OperationType {
@@ -104,9 +107,42 @@ interface UserProfile {
   name: string;
   email: string;
   role: 'User' | 'Admin';
-  status: 'Active' | 'Locked';
+  status: 'Active' | 'Blocked';
   createdAt: string;
   lastActive?: string;
+}
+
+interface AuditLog {
+  id?: string;
+  uid: string;
+  name: string;
+  email: string;
+  action: string;
+  status: 'SUCCESS' | 'WARNING' | 'ERROR';
+  message: string;
+  attempts: number;
+  timestamp: string;
+}
+
+interface UserActivityLog {
+  uid: string;
+  email: string;
+  name: string;
+  action: string;
+  details?: string;
+  timestamp: string;
+}
+
+function getRelativeTime(timestamp: any): string {
+  if (!timestamp) return 'unknown';
+  const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+  const now = new Date();
+  const seconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+  
+  if (seconds < 60) return 'just now';
+  if (seconds < 3600) return `${Math.floor(seconds / 60)} mins ago`;
+  if (seconds < 86400) return `${Math.floor(seconds / 3600)} hours ago`;
+  return `${Math.floor(seconds / 86400)} days ago`;
 }
 
 export default function AdminDashboard() {
@@ -116,6 +152,14 @@ export default function AdminDashboard() {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterRole, setFilterRole] = useState<'All' | 'User' | 'Admin'>('All');
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
+  const [userActivityLogs, setUserActivityLogs] = useState<UserActivityLog[]>([]);
+  const [securityInsights, setSecurityInsights] = useState({
+    totalAttempts: 0,
+    failedAttempts: 0,
+    successfulAttempts: 0,
+    topAttacker: null as { email: string; failedCount: number } | null
+  });
   const [stats, setStats] = useState({
     total: 0,
     active: 0,
@@ -123,6 +167,9 @@ export default function AdminDashboard() {
   });
 
   useEffect(() => {
+    // ✅ NOTE: Admin access logging is now handled at the route level (AdminRoute.tsx)
+    // This ensures EVERY access attempt is logged, including unauthorized attempts
+
     const q = query(collection(db, 'users'), orderBy('createdAt', 'desc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const usersData = snapshot.docs.map(doc => ({
@@ -148,6 +195,47 @@ export default function AdminDashboard() {
     return () => unsubscribe();
   }, []);
 
+  useEffect(() => {
+    const q = query(collection(db, 'auditLogs'), orderBy('timestamp', 'desc'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const logsData = snapshot.docs.map(doc => ({
+        ...doc.data(),
+        id: doc.id
+      })) as AuditLog[];
+      setAuditLogs(logsData);
+    }, (error) => {
+      console.error('Failed to fetch audit logs:', error);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    const q = query(collection(db, 'userActivityLogs'), orderBy('timestamp', 'desc'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const logsData = snapshot.docs.map(doc => ({
+        ...doc.data(),
+      })) as UserActivityLog[];
+      setUserActivityLogs(logsData);
+    }, (error) => {
+      console.error('Failed to fetch user activity logs:', error);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    const fetchSecurityInsights = async () => {
+      const insights = await getSecurityInsights();
+      setSecurityInsights(insights);
+    };
+
+    fetchSecurityInsights();
+    const interval = setInterval(fetchSecurityInsights, 5000); // Update every 5 seconds
+
+    return () => clearInterval(interval);
+  }, []);
+
   const handleToggleRole = async (user: UserProfile) => {
     if (user.uid === auth.currentUser?.uid) {
       toast.error("You cannot change your own role!");
@@ -163,10 +251,10 @@ export default function AdminDashboard() {
   };
 
   const handleToggleStatus = async (user: UserProfile) => {
-    const newStatus = user.status === 'Locked' ? 'Active' : 'Locked';
+    const newStatus = user.status === 'Blocked' ? 'Active' : 'Blocked';
     try {
       await updateDoc(doc(db, 'users', user.uid), { status: newStatus });
-      toast.success(`User ${newStatus === 'Locked' ? 'Locked' : 'Unlocked'}`);
+      toast.success(`User ${newStatus === 'Blocked' ? 'Blocked' : 'Unlocked'}`);
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, `users/${user.uid}`);
     }
@@ -351,6 +439,50 @@ export default function AdminDashboard() {
           />
         </div>
 
+        {/* Security Insight Panel */}
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.5 }}
+          className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10"
+        >
+          <div className="bg-white p-6 rounded-[24px] border border-[#E2E8F0] shadow-sm">
+            <h3 className="font-bold text-[16px] text-[#0F172A] mb-2">Failed Attempts</h3>
+            <p className="text-4xl font-bold text-red-600">
+              {auditLogs.filter(log => log.status === 'WARNING' || log.status === 'ERROR').length}
+            </p>
+            <p className="text-[12px] text-[#64748B] mt-2">Unauthorized access attempts</p>
+          </div>
+          <div className="bg-white p-6 rounded-[24px] border border-[#E2E8F0] shadow-sm">
+            <h3 className="font-bold text-[16px] text-[#0F172A] mb-2">Total Attempts</h3>
+            <p className="text-4xl font-bold text-blue-600">
+              {auditLogs.length}
+            </p>
+            <p className="text-[12px] text-[#64748B] mt-2">All security events</p>
+          </div>
+          <div className="bg-white p-6 rounded-[24px] border border-[#E2E8F0] shadow-sm">
+            <h3 className="font-bold text-[16px] text-[#0F172A] mb-2">Most Frequent Attacker</h3>
+            {(() => {
+              const failedByEmail: Record<string, number> = {};
+              auditLogs.filter(log => log.status === 'WARNING' || log.status === 'ERROR').forEach(log => {
+                failedByEmail[log.email] = (failedByEmail[log.email] || 0) + 1;
+              });
+              const topAttacker = Object.entries(failedByEmail)
+                .sort((a, b) => b[1] - a[1])[0];
+              return (
+                <>
+                  <p className="text-[18px] font-bold text-orange-600 truncate">
+                    {topAttacker ? topAttacker[0] : 'None'}
+                  </p>
+                  <p className="text-[12px] text-[#64748B] mt-2">
+                    {topAttacker ? `${topAttacker[1]} failed attempts` : 'No failed attempts'}
+                  </p>
+                </>
+              );
+            })()}
+          </div>
+        </motion.div>
+
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
           {/* Main Content Area */}
           <div className="lg:col-span-2 space-y-10">
@@ -439,12 +571,12 @@ export default function AdminDashboard() {
                           <div className="flex items-center justify-end gap-1">
                             <button 
                               onClick={() => handleToggleStatus(user)}
-                              title={user.status === 'Locked' ? 'Unlock User' : 'Lock User'}
+                              title={user.status === 'Blocked' ? 'Unlock User' : 'Block User'}
                               className={`p-2 rounded-lg transition-colors ${
-                                user.status === 'Locked' ? 'text-green-600 hover:bg-green-50' : 'text-orange-600 hover:bg-orange-50'
+                                user.status === 'Blocked' ? 'text-green-600 hover:bg-green-50' : 'text-orange-600 hover:bg-orange-50'
                               }`}
                             >
-                              {user.status === 'Locked' ? <Unlock size={16} /> : <Lock size={16} />}
+                              {user.status === 'Blocked' ? <Unlock size={16} /> : <Lock size={16} />}
                             </button>
                             <button 
                               onClick={() => handleToggleRole(user)}
@@ -496,35 +628,36 @@ export default function AdminDashboard() {
                 <table className="w-full text-left border-collapse">
                   <thead>
                     <tr className="bg-[#F8FAFC] text-[#64748B] text-[12px] font-bold uppercase tracking-wider">
-                      <th className="px-6 py-4">Event</th>
-                      <th className="px-6 py-4">User</th>
-                      <th className="px-6 py-4">IP Address</th>
+                      <th className="px-6 py-4">User / Event</th>
+                      <th className="px-6 py-4">Email</th>
+                      <th className="px-6 py-4 text-center">Attempts</th>
                       <th className="px-6 py-4">Timestamp</th>
                       <th className="px-6 py-4 text-right">Status</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[#F1F5F9]">
-                    <AuditRow 
-                      event="User Role Updated" 
-                      user="Admin" 
-                      ip="192.168.1.1" 
-                      time="10 mins ago" 
-                      status="Success" 
-                    />
-                    <AuditRow 
-                      event="Failed Login Attempt" 
-                      user="unknown@mail.com" 
-                      ip="45.12.33.102" 
-                      time="45 mins ago" 
-                      status="Warning" 
-                    />
-                    <AuditRow 
-                      event="Database Backup" 
-                      user="System" 
-                      ip="Internal" 
-                      time="4 hours ago" 
-                      status="Success" 
-                    />
+                    {auditLogs
+                      .slice(0, 10)
+                      .map((log, idx) => (
+                        <AuditRow 
+                          key={log.id || idx}
+                          event={log.action} 
+                          user={log.name}
+                          email={log.email}
+                          uid={log.uid}
+                          time={getRelativeTime(log.timestamp)} 
+                          attempts={log.attempts}
+                          status={log.status as 'SUCCESS' | 'WARNING' | 'ERROR'} 
+                          message={log.message}
+                        />
+                      ))}
+                    {auditLogs.length === 0 && (
+                      <tr>
+                        <td colSpan={5} className="px-6 py-8 text-center text-[#64748B]">
+                          <p>No activity logs yet</p>
+                        </td>
+                      </tr>
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -542,24 +675,19 @@ export default function AdminDashboard() {
                   <Activity size={20} className="text-[#64748B]" /> Recent Activity
                 </h2>
                 <div className="space-y-6">
-                  <ActivityItem 
-                    user="Hanish" 
-                    action="logged in" 
-                    time="10:30 AM" 
-                    icon={<UserCheck size={14} className="text-green-600" />}
-                  />
-                  <ActivityItem 
-                    user="John Doe" 
-                    action="changed password" 
-                    time="09:15 AM" 
-                    icon={<Lock size={14} className="text-blue-600" />}
-                  />
-                  <ActivityItem 
-                    user="System" 
-                    action="backup completed" 
-                    time="04:00 AM" 
-                    icon={<Shield size={14} className="text-purple-600" />}
-                  />
+                  {userActivityLogs.slice(0, 3).map((log, idx) => (
+                    <div key={`activity-${idx}`}>
+                      <ActivityItem 
+                        user={log.email} 
+                        action={log.action} 
+                        time={getRelativeTime(log.timestamp)} 
+                        icon={log.action === 'Dashboard Access' ? <UserCheck size={14} className="text-green-600" /> : <Activity size={14} className="text-blue-600" />}
+                      />
+                    </div>
+                  ))}
+                  {userActivityLogs.length === 0 && (
+                    <p className="text-[13px] text-[#64748B]">No recent activity</p>
+                  )}
                 </div>
               </motion.div>
 
@@ -629,6 +757,50 @@ export default function AdminDashboard() {
             <motion.div 
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 0.92 }}
+              className="bg-white rounded-[24px] border border-[#E2E8F0] p-8 shadow-sm"
+            >
+              <h2 className="text-[18px] font-bold flex items-center gap-2 mb-6">
+                <ShieldAlert size={20} className="text-red-600" /> Security Insights
+              </h2>
+              <div className="space-y-4">
+                <div className="p-4 rounded-xl bg-blue-50 border border-blue-200">
+                  <p className="text-[12px] text-blue-600 font-semibold uppercase">Total Attempts</p>
+                  <p className="text-[28px] font-bold text-blue-700 mt-1">{securityInsights.totalAttempts}</p>
+                </div>
+                <div className="p-4 rounded-xl bg-green-50 border border-green-200">
+                  <p className="text-[12px] text-green-600 font-semibold uppercase">Successful</p>
+                  <p className="text-[28px] font-bold text-green-700 mt-1">{securityInsights.successfulAttempts}</p>
+                </div>
+                <div className="p-4 rounded-xl bg-red-50 border border-red-200">
+                  <p className="text-[12px] text-red-600 font-semibold uppercase">Failed Attempts</p>
+                  <p className="text-[28px] font-bold text-red-700 mt-1">{securityInsights.failedAttempts}</p>
+                </div>
+                {securityInsights.topAttacker && (
+                  <div className="p-4 rounded-xl bg-orange-50 border border-orange-200">
+                    <p className="text-[12px] text-orange-600 font-semibold uppercase">Top Attacker</p>
+                    <p className="text-[14px] font-bold text-orange-700 mt-2 truncate">{securityInsights.topAttacker.email}</p>
+                    <p className="text-[12px] text-orange-600 mt-1">{securityInsights.topAttacker.failedCount} failed attempts</p>
+                  </div>
+                )}
+              </div>
+            </motion.div>
+
+            <motion.div 
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 0.95 }}
+              className="bg-white rounded-[24px] border border-[#E2E8F0] p-8 shadow-sm"
+            >
+              <h2 className="text-[18px] font-bold flex items-center gap-2 mb-6">
+                <UserCheck size={20} className="text-[#64748B]" /> Frequent Visitors
+              </h2>
+              <FrequentVisitors auditLogs={auditLogs} />
+            </motion.div>
+
+            <motion.div 
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
               transition={{ delay: 1.0 }}
               className="bg-white rounded-[24px] border border-[#E2E8F0] p-8 shadow-sm"
             >
@@ -646,7 +818,7 @@ export default function AdminDashboard() {
             <motion.div 
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: 1.1 }}
+              transition={{ delay: 1.05 }}
               className="bg-white rounded-[24px] border border-[#E2E8F0] p-8 shadow-sm"
             >
               <h2 className="text-[18px] font-bold flex items-center gap-2 mb-4">
@@ -668,7 +840,7 @@ export default function AdminDashboard() {
             <motion.div 
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: 1.2 }}
+              transition={{ delay: 1.1 }}
               className="bg-orange-600 rounded-[24px] p-8 text-white shadow-lg"
             >
               <h2 className="text-[18px] font-bold mb-4 flex items-center gap-2">
@@ -705,6 +877,37 @@ function StatCard({ icon, label, value, color, delay = 0 }: { icon: any, label: 
   );
 }
 
+function FrequentVisitors({ auditLogs }: { auditLogs: AuditLog[] }) {
+  const frequentVisitors = Object.entries(
+    auditLogs.reduce((acc, log) => {
+      acc[log.email] = (acc[log.email] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>)
+  )
+    .sort((a, b) => (b[1] as number) - (a[1] as number))
+    .slice(0, 5);
+
+  return (
+    <div className="space-y-4">
+      {frequentVisitors.length === 0 ? (
+        <p className="text-[13px] text-[#64748B]">No access logs yet</p>
+      ) : (
+        frequentVisitors.map(([email, count]) => (
+          <div key={email} className="flex items-center justify-between p-3 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0]">
+            <div className="overflow-hidden">
+              <p className="text-[13px] font-bold truncate">{email}</p>
+              <p className="text-[11px] text-[#64748B]">Frequent Visitor</p>
+            </div>
+            <div className="bg-[#0A0A0A] text-white px-2.5 py-1 rounded-lg text-[12px] font-bold">
+              {count}x
+            </div>
+          </div>
+        ))
+      )}
+    </div>
+  );
+}
+
 function ActionButton({ icon, label }: { icon: any, label: string }) {
   return (
     <button className="flex flex-col items-center justify-center gap-2 p-4 rounded-2xl bg-[#F8FAFC] border border-[#E2E8F0] hover:bg-[#F1F5F9] hover:border-[#CBD5E1] transition-all group">
@@ -716,19 +919,41 @@ function ActionButton({ icon, label }: { icon: any, label: string }) {
   );
 }
 
-function AuditRow({ event, user, ip, time, status }: { event: string, user: string, ip: string, time: string, status: string }) {
+function AuditRow({ event, user, email, uid, time, status, attempts, message }: { event: string, user: string, email: string, uid: string, time: string, status: 'SUCCESS' | 'WARNING' | 'ERROR', attempts: number, message: string, key?: any }) {
+  const getStatusStyles = () => {
+    switch (status) {
+      case 'SUCCESS': return 'bg-green-100 text-green-700 border-green-200';
+      case 'WARNING': return 'bg-yellow-100 text-yellow-700 border-yellow-200';
+      case 'ERROR': return 'bg-red-100 text-red-700 border-red-200';
+      default: return 'bg-gray-100 text-gray-700 border-gray-200';
+    }
+  };
+
+  const isAlert = status === 'WARNING' || status === 'ERROR';
+  
   return (
     <tr className="hover:bg-[#F8FAFC] transition-colors group">
       <td className="px-6 py-4">
-        <p className="font-semibold text-[14px]">{event}</p>
+        <div className="flex flex-col">
+          <p className={`font-semibold text-[14px] ${isAlert ? 'text-red-600' : 'text-[#0F172A]'}`}>
+            {isAlert ? `⚠️ ${user}` : user}
+          </p>
+          <p className="text-[11px] text-[#64748B]">{event}</p>
+          <p className="text-[10px] text-[#94A3B8] mt-0.5">{message}</p>
+          {isAlert && (
+            <p className="text-[10px] font-mono text-red-400 mt-1">UID: {uid}</p>
+          )}
+        </div>
       </td>
-      <td className="px-6 py-4 text-[13px] text-[#64748B]">{user}</td>
-      <td className="px-6 py-4 text-[13px] text-[#64748B] font-mono">{ip}</td>
+      <td className="px-6 py-4 text-[13px] text-[#64748B]">{email}</td>
+      <td className="px-6 py-4 text-[13px] font-bold text-center">
+        <span className={`inline-block px-2.5 py-1 rounded-lg text-[11px] font-bold ${isAlert ? 'bg-red-600 text-white' : 'bg-[#0A0A0A] text-white'}`}>
+          {attempts}x
+        </span>
+      </td>
       <td className="px-6 py-4 text-[13px] text-[#64748B]">{time}</td>
       <td className="px-6 py-4 text-right">
-        <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-tight ${
-          status === 'Success' ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'
-        }`}>
+        <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-tight border ${getStatusStyles()}`}>
           {status}
         </span>
       </td>

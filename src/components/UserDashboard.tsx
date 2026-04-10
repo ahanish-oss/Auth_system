@@ -27,8 +27,9 @@ import {
   PanelLeftOpen
 } from 'lucide-react';
 import { signOut } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, addDoc, collection } from 'firebase/firestore';
 import { auth, db } from '../firebase';
+import { useAuth } from '../App';
 import toast from 'react-hot-toast';
 
 enum OperationType {
@@ -87,17 +88,42 @@ interface UserProfile {
   name: string;
   email: string;
   role: 'User' | 'Admin';
-  status: 'Active' | 'Locked';
+  status: 'Active' | 'Blocked';
   createdAt: string;
   lastActive?: string;
 }
 
+async function logUserActivity(action: string, details?: string) {
+  try {
+    if (!auth.currentUser) return;
+    
+    await addDoc(collection(db, 'userActivityLogs'), {
+      uid: auth.currentUser.uid,
+      email: auth.currentUser.email,
+      name: auth.currentUser.displayName || 'Unknown',
+      action,
+      details: details || '',
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('Failed to log user activity:', error);
+  }
+}
+
 export default function UserDashboard() {
   const navigate = useNavigate();
+  const { isAdmin, loading: authLoading } = useAuth();
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+
+  // Fallback redirect if user is actually an admin
+  useEffect(() => {
+    if (!authLoading && isAdmin) {
+      navigate('/admin-dashboard', { replace: true });
+    }
+  }, [isAdmin, authLoading, navigate]);
 
   useEffect(() => {
     const fetchProfile = async () => {
@@ -109,6 +135,9 @@ export default function UserDashboard() {
               ...userDoc.data(),
               uid: userDoc.id
             } as UserProfile);
+            
+            // Log user dashboard access
+            await logUserActivity('Dashboard Access', 'User accessed their dashboard');
           }
         } catch (error) {
           handleFirestoreError(error, OperationType.GET, `users/${auth.currentUser.uid}`);
@@ -123,6 +152,7 @@ export default function UserDashboard() {
 
   const handleLogout = async () => {
     try {
+      await logUserActivity('Logout', 'User logged out');
       await signOut(auth);
       navigate('/login');
       toast.success("Logged out successfully.");
@@ -181,6 +211,16 @@ export default function UserDashboard() {
                   <Layout size={16} className="text-white" />
                   <span className="text-[13px] font-medium text-white">Dashboard</span>
                 </button>
+
+                {isAdmin && (
+                  <button
+                    onClick={() => navigate('/admin-dashboard')}
+                    className="w-full flex items-center gap-3 px-3 py-3 rounded-lg transition-colors group text-left hover:bg-purple-500/20 text-purple-400"
+                  >
+                    <Shield size={16} />
+                    <span className="text-[13px] font-medium">Admin Dashboard</span>
+                  </button>
+                )}
               </div>
             )}
 
@@ -782,4 +822,3 @@ function ActivityItem({ action, time, icon }: { action: string, time: string, ic
     </div>
   );
 }
-
