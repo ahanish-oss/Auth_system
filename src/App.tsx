@@ -135,31 +135,32 @@ const ProtectedRoute = ({ children }: { children: ReactNode }) => {
 };
 
 const AdminRoute = ({ children }: { children: ReactNode }) => {
-  const { user, isAdmin, status, loading } = useAuth();
-  const [logged, setLogged] = useState(false);
+  const { user, status, loading } = useAuth();
+  const [hasLogged, setHasLogged] = useState(false);
 
   useEffect(() => {
-    if (!loading && user && !logged) {
+    // Only log once per mount when loading is finished and user is present
+    if (!loading && user && !hasLogged) {
       if (user.email !== ADMIN_EMAIL) {
         logEvent({
           user,
           action: "ADMIN_ACCESS_ATTEMPT",
           status: "WARNING",
-          message: "Unauthorized user tried to access admin dashboard",
+          message: "User tried to access admin dashboard via URL",
           severity: "MEDIUM"
         });
       } else {
         logEvent({
           user,
-          action: "ADMIN_LOGIN_SUCCESS",
+          action: "ADMIN_ACCESS_SUCCESS",
           status: "SUCCESS",
           message: "Admin accessed dashboard",
           severity: "LOW"
         });
       }
-      setLogged(true);
+      setHasLogged(true);
     }
-  }, [loading, user, isAdmin, logged]);
+  }, [loading, user, hasLogged]);
 
   if (loading) return <LoadingScreen />;
 
