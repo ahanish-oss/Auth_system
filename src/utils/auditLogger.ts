@@ -44,8 +44,10 @@ export const logEvent = async ({
   try {
     console.log("📝 Attempting to log:", action, user.email);
 
-    // 1. Fetch last attempt count for this specific action and user
+    // 1. Fetch last log to see if we should increment or start new
     let attempts = 1;
+    let lastLogId: string | null = null;
+    
     try {
       const q = query(
         collection(db, "auditLogs"),
@@ -57,13 +59,22 @@ export const logEvent = async ({
 
       const querySnapshot = await getDocs(q);
       if (!querySnapshot.empty) {
-        const lastLog = querySnapshot.docs[0].data() as AuditLog;
-        // Reset attempts if the last one was successful, otherwise increment
-        attempts = lastLog.status === "SUCCESS" ? 1 : (lastLog.attempts || 0) + 1;
+        const lastLogDoc = querySnapshot.docs[0];
+        const lastLog = lastLogDoc.data() as AuditLog;
+        
+        // Check if it's "recent" (within 1 hour) to increment instead of new row
+        const lastTimestamp = lastLog.timestamp?.toDate?.() || new Date(0);
+        const now = new Date();
+        const diffMs = now.getTime() - lastTimestamp.getTime();
+        const isRecent = diffMs < 60 * 60 * 1000; // 1 hour window
+
+        if (isRecent && lastLog.status === status) {
+          lastLogId = lastLogDoc.id;
+          attempts = (lastLog.attempts || 0) + 1;
+        }
       }
     } catch (readErr) {
-      console.warn("⚠️ Could not read previous logs for attempt counting (likely permission restricted):", readErr);
-      // Proceed with attempts = 1
+      console.warn("⚠️ Could not read previous logs:", readErr);
     }
 
     // 2. Check if user should be blocked (threshold: 5 failed attempts)
@@ -82,21 +93,32 @@ export const logEvent = async ({
       }
     }
 
-    // 3. Log the event
-    const logData = {
-      uid: user.uid,
-      name: user.displayName || user.name || "Unknown User",
-      email: user.email || "no-email@system.com",
-      action,
-      status,
-      message,
-      severity,
-      attempts,
-      timestamp: serverTimestamp()
-    };
+    // 3. Log the event (Update existing or Create new)
+    if (lastLogId) {
+      await updateDoc(doc(db, "auditLogs", lastLogId), {
+        attempts,
+        message,
+        severity,
+        status,
+        timestamp: serverTimestamp()
+      });
+      console.log("✅ Log updated (incremented). ID:", lastLogId);
+    } else {
+      const logData = {
+        uid: user.uid,
+        name: user.displayName || user.name || "Unknown User",
+        email: user.email || "no-email@system.com",
+        action,
+        status,
+        message,
+        severity,
+        attempts: 1,
+        timestamp: serverTimestamp()
+      };
 
-    const docRef = await addDoc(collection(db, "auditLogs"), logData);
-    console.log("✅ Log success. ID:", docRef.id);
+      const docRef = await addDoc(collection(db, "auditLogs"), logData);
+      console.log("✅ New log created. ID:", docRef.id);
+    }
 
   } catch (err) {
     console.error("❌ Logging failed:", err);

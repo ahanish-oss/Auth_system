@@ -996,7 +996,7 @@ function AuditRow({ event, user, email, uid, time, status, attempts, message, se
       case 'CRITICAL': return 'text-red-600 font-black';
       case 'HIGH': return 'text-red-500 font-bold';
       case 'MEDIUM': return 'text-orange-500 font-bold';
-      case 'LOW': return 'text-blue-500';
+      case 'LOW': return 'text-blue-500 font-bold';
       default: return 'text-gray-400';
     }
   };
@@ -1013,8 +1013,8 @@ function AuditRow({ event, user, email, uid, time, status, attempts, message, se
             {isAttack ? `⚠️ ${user || 'Unknown'}` : (user || 'Unknown')}
           </p>
           <div className="flex items-center gap-2">
-            <p className="text-[11px] text-[#64748B] font-bold">
-              {isSuccess ? "Admin Login" : event}
+            <p className={`text-[11px] font-bold ${isAttack ? 'text-red-500' : isSuccess ? 'text-blue-600' : 'text-[#64748B]'}`}>
+              {isSuccess ? "Admin Login" : isAttack ? "Unauthorized Access" : event}
             </p>
             {severity && (
               <span className={`text-[9px] uppercase tracking-widest ${getSeverityStyles()}`}>
@@ -1023,9 +1023,6 @@ function AuditRow({ event, user, email, uid, time, status, attempts, message, se
             )}
           </div>
           <p className="text-[10px] text-[#94A3B8] mt-0.5">{message}</p>
-          {isAttack && (
-            <p className="text-[10px] font-mono text-red-400 mt-1">UID: {uid}</p>
-          )}
         </div>
       </td>
       <td className="px-6 py-4 text-[13px] text-[#64748B]">{email || 'N/A'}</td>
