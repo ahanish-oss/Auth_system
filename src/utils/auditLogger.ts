@@ -77,17 +77,17 @@ export const logEvent = async ({
     }
 
     // 3. Log the event
-    await addDoc(collection(db, "auditLogs"), {
-      uid: user.uid,
-      name: user.displayName || "Unknown",
-      email: user.email,
-      action,
-      status,
-      message,
-      severity,
-      attempts,
-      timestamp: serverTimestamp()
-    });
+  await addDoc(collection(db, "auditLogs"), {
+  uid: user.uid,
+  name: user.displayName || "Unknown",
+  email: user.email,
+  action,
+  status,
+  message,
+  severity,
+  attempts,
+  timestamp: new Date().toISOString() // ✅ FIXED
+});
 
   } catch (err) {
     console.error("Logging failed:", err);
