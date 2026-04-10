@@ -104,7 +104,7 @@ service cloud.firestore {
       // Only Admins can read all logs, users can read their own
       allow create: if isAuthenticated() && 
                       request.resource.data.uid == request.auth.uid &&
-                      request.resource.data.keys().hasAll(['uid', 'name', 'email', 'action', 'status', 'message', 'attempts', 'timestamp']);
+                      request.resource.data.keys().hasAll(['uid', 'name', 'email', 'action', 'status', 'message', 'severity', 'attempts', 'timestamp']);
       allow read, list: if isAdmin() || (isAuthenticated() && resource.data.uid == request.auth.uid);
       allow update, delete: if false;
     }

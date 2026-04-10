@@ -22,7 +22,7 @@ interface AuthContextType {
   loading: boolean;
 }
 
-import { logEvent } from './utils/auditLogger';
+import { logEvent, ADMIN_EMAIL } from './utils/auditLogger';
 
 const AuthContext = createContext<AuthContextType>({ 
   user: null, 
@@ -60,7 +60,7 @@ const AuthProvider = ({ children }: { children: ReactNode }) => {
     
     const unsubscribeDoc = onSnapshot(userDocRef, (docSnap) => {
       const email = user.email?.toLowerCase() || '';
-      const isDesignatedAdmin = email === 'ahanish@karunya.edu.in' || email === 'admin@gmail.com';
+      const isDesignatedAdmin = email === 'ahanish@karunya.edu.in' || email === ADMIN_EMAIL;
       
       let isActuallyAdmin = isDesignatedAdmin;
       let fetchedRole: 'Admin' | 'User' = isDesignatedAdmin ? 'Admin' : 'User';
@@ -90,7 +90,7 @@ const AuthProvider = ({ children }: { children: ReactNode }) => {
     }, (error) => {
       console.error("Error listening to user doc:", error);
       const email = user.email?.toLowerCase() || '';
-      const isActuallyAdmin = email === 'ahanish@karunya.edu.in' || email === 'admin@gmail.com';
+      const isActuallyAdmin = email === 'ahanish@karunya.edu.in' || email === ADMIN_EMAIL;
       setRole(isActuallyAdmin ? 'Admin' : 'User');
       setIsAdmin(isActuallyAdmin);
       setStatus('Active');
@@ -140,19 +140,21 @@ const AdminRoute = ({ children }: { children: ReactNode }) => {
 
   useEffect(() => {
     if (!loading && user && !logged) {
-      if (!isAdmin) {
+      if (user.email !== ADMIN_EMAIL) {
         logEvent({
           user,
-          action: "Admin Dashboard Access",
+          action: "ADMIN_ACCESS_ATTEMPT",
           status: "WARNING",
-          message: "Unauthorized access attempt to admin dashboard"
+          message: "Unauthorized user tried to access admin dashboard",
+          severity: "MEDIUM"
         });
       } else {
         logEvent({
           user,
-          action: "Admin Dashboard Access",
+          action: "ADMIN_LOGIN_SUCCESS",
           status: "SUCCESS",
-          message: "Admin accessed dashboard"
+          message: "Admin accessed dashboard",
+          severity: "LOW"
         });
       }
       setLogged(true);
@@ -165,7 +167,7 @@ const AdminRoute = ({ children }: { children: ReactNode }) => {
   
   if (status === 'Blocked') return <Navigate to="/blocked" replace />;
 
-  if (!isAdmin) {
+  if (user.email !== ADMIN_EMAIL) {
     return <AccessDenied />;
   }
   

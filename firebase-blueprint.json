@@ -66,6 +66,7 @@
         "action": { "type": "string", "description": "Action performed (e.g. Admin Dashboard Access)" },
         "status": { "type": "string", "enum": ["SUCCESS", "WARNING", "ERROR"], "description": "Log status" },
         "message": { "type": "string", "description": "Detailed log message" },
+        "severity": { "type": "string", "enum": ["LOW", "MEDIUM", "HIGH", "CRITICAL"], "description": "Event severity" },
         "attempts": { "type": "number", "description": "Attempt count" },
         "timestamp": { "type": "string", "format": "date-time", "description": "Server timestamp" }
       },

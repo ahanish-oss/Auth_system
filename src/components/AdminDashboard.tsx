@@ -49,6 +49,7 @@ import {
 import { signOut } from 'firebase/auth';
 import { auth, db } from '../firebase';
 import { getSecurityInsights } from '../utils/securityLogger';
+import { ADMIN_EMAIL } from '../utils/auditLogger';
 import toast from 'react-hot-toast';
 
 enum OperationType {
@@ -120,6 +121,7 @@ interface AuditLog {
   action: string;
   status: 'SUCCESS' | 'WARNING' | 'ERROR';
   message: string;
+  severity: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
   attempts: number;
   timestamp: string;
 }
@@ -147,6 +149,26 @@ function getRelativeTime(timestamp: any): string {
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
+
+  // 🔒 Restrict Admin Dashboard Access (Hard Check)
+  if (auth.currentUser?.email !== ADMIN_EMAIL) {
+    return (
+      <div className="h-screen flex items-center justify-center bg-[#F8FAFC]">
+        <div className="text-center p-8 bg-white rounded-3xl border border-[#E2E8F0] shadow-xl">
+          <ShieldAlert size={48} className="text-red-600 mx-auto mb-4" />
+          <h1 className="text-2xl font-bold text-[#0F172A] mb-2">Access Denied</h1>
+          <p className="text-[#64748B] mb-6">You do not have permission to view this page.</p>
+          <button 
+            onClick={() => navigate('/dashboard')}
+            className="px-6 py-2 bg-[#0A0A0A] text-white rounded-xl font-bold hover:bg-[#262626] transition-all"
+          >
+            Return to Dashboard
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -289,8 +311,9 @@ export default function AdminDashboard() {
   };
 
   const filteredUsers = users.filter(user => {
-    const matchesSearch = user.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                         user.email.toLowerCase().includes(searchTerm.toLowerCase());
+    const term = searchTerm.toLowerCase();
+    const matchesSearch = (user.name || "").toLowerCase().includes(term) || 
+                         (user.email || "").toLowerCase().includes(term);
     const matchesFilter = filterRole === 'All' || user.role === filterRole;
     return matchesSearch && matchesFilter;
   });
@@ -649,6 +672,7 @@ export default function AdminDashboard() {
                           attempts={log.attempts}
                           status={log.status as 'SUCCESS' | 'WARNING' | 'ERROR'} 
                           message={log.message}
+                          severity={log.severity}
                         />
                       ))}
                     {auditLogs.length === 0 && (
@@ -919,7 +943,7 @@ function ActionButton({ icon, label }: { icon: any, label: string }) {
   );
 }
 
-function AuditRow({ event, user, email, uid, time, status, attempts, message }: { event: string, user: string, email: string, uid: string, time: string, status: 'SUCCESS' | 'WARNING' | 'ERROR', attempts: number, message: string, key?: any }) {
+function AuditRow({ event, user, email, uid, time, status, attempts, message, severity }: { event: string, user: string, email: string, uid: string, time: string, status: 'SUCCESS' | 'WARNING' | 'ERROR', attempts: number, message: string, severity?: string, key?: any }) {
   const getStatusStyles = () => {
     switch (status) {
       case 'SUCCESS': return 'bg-green-100 text-green-700 border-green-200';
@@ -929,23 +953,41 @@ function AuditRow({ event, user, email, uid, time, status, attempts, message }: 
     }
   };
 
+  const getSeverityStyles = () => {
+    switch (severity) {
+      case 'CRITICAL': return 'text-red-600 font-black';
+      case 'HIGH': return 'text-red-500 font-bold';
+      case 'MEDIUM': return 'text-orange-500 font-bold';
+      case 'LOW': return 'text-blue-500';
+      default: return 'text-gray-400';
+    }
+  };
+
   const isAlert = status === 'WARNING' || status === 'ERROR';
+  const isAttack = event === "ADMIN_ACCESS_ATTEMPT";
   
   return (
-    <tr className="hover:bg-[#F8FAFC] transition-colors group">
+    <tr className={`hover:bg-[#F8FAFC] transition-colors group ${isAttack ? 'bg-red-50/50' : ''}`}>
       <td className="px-6 py-4">
         <div className="flex flex-col">
           <p className={`font-semibold text-[14px] ${isAlert ? 'text-red-600' : 'text-[#0F172A]'}`}>
-            {isAlert ? `⚠️ ${user}` : user}
+            {isAlert ? `⚠️ ${user || 'Unknown'}` : (user || 'Unknown')}
           </p>
-          <p className="text-[11px] text-[#64748B]">{event}</p>
+          <div className="flex items-center gap-2">
+            <p className="text-[11px] text-[#64748B]">{event}</p>
+            {severity && (
+              <span className={`text-[9px] uppercase tracking-widest ${getSeverityStyles()}`}>
+                • {severity}
+              </span>
+            )}
+          </div>
           <p className="text-[10px] text-[#94A3B8] mt-0.5">{message}</p>
           {isAlert && (
             <p className="text-[10px] font-mono text-red-400 mt-1">UID: {uid}</p>
           )}
         </div>
       </td>
-      <td className="px-6 py-4 text-[13px] text-[#64748B]">{email}</td>
+      <td className="px-6 py-4 text-[13px] text-[#64748B]">{email || 'N/A'}</td>
       <td className="px-6 py-4 text-[13px] font-bold text-center">
         <span className={`inline-block px-2.5 py-1 rounded-lg text-[11px] font-bold ${isAlert ? 'bg-red-600 text-white' : 'bg-[#0A0A0A] text-white'}`}>
           {attempts}x

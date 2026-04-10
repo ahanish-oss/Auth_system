@@ -12,6 +12,8 @@ import {
   updateDoc
 } from "firebase/firestore";
 
+export const ADMIN_EMAIL = "admin@gmail.com";
+
 export interface AuditLog {
   uid: string;
   name: string;
@@ -19,6 +21,7 @@ export interface AuditLog {
   action: string;
   status: "SUCCESS" | "WARNING" | "ERROR";
   message: string;
+  severity: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
   attempts: number;
   timestamp: any;
 }
@@ -27,12 +30,14 @@ export const logEvent = async ({
   user,
   action,
   status,
-  message
+  message,
+  severity = "LOW"
 }: {
   user: any;
   action: string;
   status: "SUCCESS" | "WARNING" | "ERROR";
   message: string;
+  severity?: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
 }) => {
   if (!user) return;
 
@@ -56,8 +61,9 @@ export const logEvent = async ({
     }
 
     // 2. Check if user should be blocked (threshold: 5 failed attempts)
-    if (attempts >= 5 && status === "WARNING") {
+    if (attempts >= 5 && (status === "WARNING" || status === "ERROR")) {
       status = "ERROR";
+      severity = "CRITICAL";
       message = "User blocked due to repeated unauthorized access attempts";
       
       // Update user status in Firestore
@@ -78,6 +84,7 @@ export const logEvent = async ({
       action,
       status,
       message,
+      severity,
       attempts,
       timestamp: serverTimestamp()
     });
