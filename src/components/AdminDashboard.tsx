@@ -224,6 +224,7 @@ export default function AdminDashboard() {
         ...doc.data(),
         id: doc.id
       })) as AuditLog[];
+      console.log("AUDIT LOGS FETCHED:", logsData); // 🚨 TEMP DEBUG LOG
       setAuditLogs(logsData);
     }, (error) => {
       console.error('Failed to fetch audit logs:', error);
