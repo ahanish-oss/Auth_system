@@ -49,7 +49,7 @@ import {
 import { signOut } from 'firebase/auth';
 import { auth, db } from '../firebase';
 import { getSecurityInsights } from '../utils/securityLogger';
-import { ADMIN_EMAIL } from '../utils/auditLogger';
+import { ADMIN_EMAIL, deleteAuditLog } from '../utils/auditLogger';
 import toast from 'react-hot-toast';
 
 enum OperationType {
@@ -308,6 +308,19 @@ export default function AdminDashboard() {
       toast.success("User deleted successfully.");
     } catch (error) {
       handleFirestoreError(error, OperationType.DELETE, `users/${uid}`);
+    }
+  };
+
+  const handleDeleteLog = async (logId: string) => {
+    if (!window.confirm("Are you sure you want to delete this log entry?")) {
+      return;
+    }
+
+    try {
+      await deleteAuditLog(logId);
+      toast.success("Log entry deleted");
+    } catch (error) {
+      toast.error("Failed to delete log");
     }
   };
 
@@ -708,6 +721,7 @@ export default function AdminDashboard() {
                         .map((log, idx) => (
                           <AuditRow 
                             key={log.id || idx}
+                            id={log.id || ''}
                             event={log.action} 
                             user={log.name}
                             email={log.email}
@@ -717,6 +731,7 @@ export default function AdminDashboard() {
                             status={log.status as 'SUCCESS' | 'WARNING' | 'ERROR'} 
                             message={log.message}
                             severity={log.severity}
+                            onDelete={handleDeleteLog}
                           />
                         ))
                     )}
@@ -981,7 +996,7 @@ function ActionButton({ icon, label }: { icon: any, label: string }) {
   );
 }
 
-function AuditRow({ event, user, email, uid, time, status, attempts, message, severity }: { event: string, user: string, email: string, uid: string, time: string, status: 'SUCCESS' | 'WARNING' | 'ERROR', attempts: number, message: string, severity?: string, key?: any }) {
+function AuditRow({ id, event, user, email, uid, time, status, attempts, message, severity, onDelete }: { id: string, event: string, user: string, email: string, uid: string, time: string, status: 'SUCCESS' | 'WARNING' | 'ERROR', attempts: number, message: string, severity?: string, onDelete: (id: string) => void, key?: any }) {
   const getStatusStyles = () => {
     switch (status) {
       case 'SUCCESS': return 'bg-green-100 text-green-700 border-green-200';
@@ -1033,9 +1048,18 @@ function AuditRow({ event, user, email, uid, time, status, attempts, message, se
       </td>
       <td className="px-6 py-4 text-[13px] text-[#64748B]">{time}</td>
       <td className="px-6 py-4 text-right">
-        <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-tight border ${getStatusStyles()}`}>
-          {status}
-        </span>
+        <div className="flex items-center justify-end gap-3">
+          <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-tight border ${getStatusStyles()}`}>
+            {status}
+          </span>
+          <button 
+            onClick={() => onDelete(id)}
+            className="p-1.5 text-[#94A3B8] hover:text-red-600 hover:bg-red-50 rounded-lg transition-all opacity-0 group-hover:opacity-100"
+            title="Delete Log"
+          >
+            <Trash2 size={14} />
+          </button>
+        </div>
       </td>
     </tr>
   );

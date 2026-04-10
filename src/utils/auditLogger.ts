@@ -9,7 +9,8 @@ import {
   limit, 
   getDocs,
   doc,
-  updateDoc
+  updateDoc,
+  deleteDoc
 } from "firebase/firestore";
 
 export const ADMIN_EMAIL = "admin@gmail.com";
@@ -144,6 +145,17 @@ export const getAllAuditLogs = async (limitCount = 50) => {
     return logs;
   } catch (err) {
     console.error("❌ Failed to fetch audit logs:", err);
+    throw err;
+  }
+};
+
+export const deleteAuditLog = async (logId: string) => {
+  try {
+    console.log("🗑️ Deleting audit log:", logId);
+    await deleteDoc(doc(db, "auditLogs", logId));
+    console.log("✅ Log deleted successfully");
+  } catch (err) {
+    console.error("❌ Failed to delete audit log:", err);
     throw err;
   }
 };

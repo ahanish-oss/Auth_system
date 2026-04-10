@@ -4,7 +4,7 @@ service cloud.firestore {
 
     match /auditLogs/{logId} {
       allow create: if request.auth != null;
-      allow read: if request.auth.token.email == "admin@gmail.com";
+      allow read, delete: if request.auth.token.email == "admin@gmail.com";
     }
 
     match /users/{userId} {
