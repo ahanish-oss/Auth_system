@@ -139,41 +139,43 @@ const AdminRoute = ({ children }: { children: ReactNode }) => {
   const [hasLogged, setHasLogged] = useState(false);
 
   useEffect(() => {
-    // Only log once per mount when loading is finished and user is present
-    if (!loading && user && !hasLogged) {
-      if (user.email !== ADMIN_EMAIL) {
-        // 🚨 LOG UNAUTHORIZED ACCESS
-        logEvent({
-          user,
-          action: "ADMIN_ACCESS_ATTEMPT",
-          status: "WARNING",
-          message: "Unauthorized user tried to access admin dashboard",
-          severity: "MEDIUM"
-        });
-        console.log("Audit Log Created: ADMIN_ACCESS_ATTEMPT", user.email);
-      } else {
-        // ✅ LOG ADMIN SUCCESS
-        logEvent({
-          user,
-          action: "ADMIN_ACCESS_SUCCESS",
-          status: "SUCCESS",
-          message: "Admin accessed dashboard",
-          severity: "LOW"
-        });
-        console.log("Audit Log Created: ADMIN_ACCESS_SUCCESS", user.email);
+    const triggerLog = async () => {
+      if (!loading && user && !hasLogged) {
+        if (user.email !== ADMIN_EMAIL) {
+          // 🚨 LOG UNAUTHORIZED ACCESS
+          await logEvent({
+            user,
+            action: "ADMIN_ACCESS_ATTEMPT",
+            status: "WARNING",
+            message: "Unauthorized user tried to access admin dashboard",
+            severity: "MEDIUM"
+          });
+          console.log("Audit Log Created: ADMIN_ACCESS_ATTEMPT", user.email);
+        } else {
+          // ✅ LOG ADMIN SUCCESS
+          await logEvent({
+            user,
+            action: "ADMIN_ACCESS_SUCCESS",
+            status: "SUCCESS",
+            message: "Admin accessed dashboard",
+            severity: "LOW"
+          });
+          console.log("Audit Log Created: ADMIN_ACCESS_SUCCESS", user.email);
+        }
+        setHasLogged(true);
       }
-      setHasLogged(true);
-    }
+    };
+    triggerLog();
   }, [loading, user, hasLogged]);
 
-  if (loading) return <LoadingScreen />;
+  if (loading || (user && !hasLogged)) return <LoadingScreen />;
 
   if (!user) return <Navigate to="/login" replace />;
   
   if (status === 'Blocked') return <Navigate to="/blocked" replace />;
 
   if (user.email !== ADMIN_EMAIL) {
-    return <AccessDenied />;
+    return <Navigate to="/dashboard" replace />;
   }
   
   return <>{children}</>;

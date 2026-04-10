@@ -42,22 +42,28 @@ export const logEvent = async ({
   if (!user) return;
 
   try {
+    console.log("📝 Attempting to log:", action, user.email);
+
     // 1. Fetch last attempt count for this specific action and user
-    const q = query(
-      collection(db, "auditLogs"),
-      where("uid", "==", user.uid),
-      where("action", "==", action),
-      orderBy("timestamp", "desc"),
-      limit(1)
-    );
-
-    const querySnapshot = await getDocs(q);
     let attempts = 1;
+    try {
+      const q = query(
+        collection(db, "auditLogs"),
+        where("uid", "==", user.uid),
+        where("action", "==", action),
+        orderBy("timestamp", "desc"),
+        limit(1)
+      );
 
-    if (!querySnapshot.empty) {
-      const lastLog = querySnapshot.docs[0].data() as AuditLog;
-      // Reset attempts if the last one was successful, otherwise increment
-      attempts = lastLog.status === "SUCCESS" ? 1 : (lastLog.attempts || 0) + 1;
+      const querySnapshot = await getDocs(q);
+      if (!querySnapshot.empty) {
+        const lastLog = querySnapshot.docs[0].data() as AuditLog;
+        // Reset attempts if the last one was successful, otherwise increment
+        attempts = lastLog.status === "SUCCESS" ? 1 : (lastLog.attempts || 0) + 1;
+      }
+    } catch (readErr) {
+      console.warn("⚠️ Could not read previous logs for attempt counting (likely permission restricted):", readErr);
+      // Proceed with attempts = 1
     }
 
     // 2. Check if user should be blocked (threshold: 5 failed attempts)
@@ -72,7 +78,7 @@ export const logEvent = async ({
           status: "Blocked"
         });
       } catch (err) {
-        console.error("Failed to block user:", err);
+        console.error("❌ Failed to block user:", err);
       }
     }
 
@@ -89,13 +95,11 @@ export const logEvent = async ({
       timestamp: serverTimestamp()
     };
 
-    console.log("📝 Attempting to write audit log:", logData);
-
     const docRef = await addDoc(collection(db, "auditLogs"), logData);
-    console.log("✅ Audit log written successfully with ID:", docRef.id);
+    console.log("✅ Log success. ID:", docRef.id);
 
   } catch (err) {
-    console.error("❌ Logging failed. This is likely a Firestore permission error:", err);
+    console.error("❌ Logging failed:", err);
   }
 };
 

@@ -1,113 +1,14 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // ===============================================================
-    // Assumed Data Model
-    // ===============================================================
-    //
-    // Collection: users
-    // Document ID: {userId} (Firebase Auth UID)
-    // Fields:
-    //   - uid: string (required) - Firebase Auth UID
-    //   - name: string (required, 1-50 chars) - Display name
-    //   - email: string (required) - User email address
-    //   - role: string (required, enum: ['User', 'Admin']) - User role
-    //   - status: string (required, enum: ['Active', 'Locked']) - Account status
-    //   - lastActive: timestamp (optional) - Last activity time
-    //   - createdAt: timestamp (optional) - Account creation time
-    //
-    // ===============================================================
-
-    // ===============================================================
-    // Helper Functions
-    // ===============================================================
-    function isAuthenticated() {
-      return request.auth != null;
-    }
-
-    function isOwner(userId) {
-      return isAuthenticated() && request.auth.uid == userId;
-    }
-
-    function isAdmin() {
-      return isAuthenticated() &&
-        (request.auth.token.email.matches("(?i)ahanish@karunya\\.edu\\.in") ||
-         request.auth.token.email.matches("(?i)admin@gmail\\.com") ||
-         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role.matches("(?i)Admin")));
-    }
-
-    function isValidEmail(email) {
-      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
-    }
-
-    function isValidUser(data) {
-      return data.keys().hasOnly(['uid', 'name', 'email', 'role', 'status', 'lastActive', 'createdAt']) &&
-             data.uid is string &&
-             data.name is string && data.name.size() > 0 && data.name.size() <= 50 &&
-             data.email is string && isValidEmail(data.email) &&
-             data.role in ['User', 'Admin'] &&
-             data.status in ['Active', 'Blocked'];
-    }
-
-    // ===============================================================
-    // Rules
-    // ===============================================================
-
-    match /users/{userId} {
-      // Users can read their own profile, Admins can read all
-      allow get: if isOwner(userId) || isAdmin();
-      allow list: if isAdmin();
-      
-      // Users can create their own profile
-      allow create: if isOwner(userId) && 
-                      isValidUser(request.resource.data) && 
-                      request.resource.data.status == 'Active';
-      
-      // Users can update their own profile (except role/status, unless self-blocking), Admins can update everything
-      allow update: if (isOwner(userId) && 
-                       isValidUser(request.resource.data) && 
-                       request.resource.data.role == resource.data.role &&
-                       (request.resource.data.status == resource.data.status || request.resource.data.status == 'Blocked')) ||
-                      (isAdmin() && isValidUser(request.resource.data));
-
-      // Only Admins can delete users
-      allow delete: if isAdmin();
-    }
-
-    match /otps/{email} {
-      // Deny all client-side access. Only server-side (Admin SDK) can access.
-      allow read, write: if false;
-    }
-
-    match /adminAccessLogs/{logId} {
-      // Allow any authenticated user to create a log entry
-      // Only Admins can read all logs, users can read their own
-      allow create: if isAuthenticated() && 
-                      request.resource.data.uid == request.auth.uid &&
-                      request.resource.data.keys().hasAll(['uid', 'email', 'name', 'role', 'timestamp', 'success', 'reason', 'attemptCount']);
-      allow read, list: if isAdmin() || (isAuthenticated() && resource.data.uid == request.auth.uid);
-      allow update, delete: if false;
-    }
-
-    match /userActivityLogs/{logId} {
-      // Allow any authenticated user to create a log entry for themselves
-      // Only Admins can read all logs, users can read their own
-      allow create: if isAuthenticated() && 
-                      request.resource.data.uid == request.auth.uid;
-      allow read, list: if isAdmin() || (isAuthenticated() && resource.data.uid == request.auth.uid);
-      allow update, delete: if false;
-    }
 
     match /auditLogs/{logId} {
-      // 🛡️ PRODUCTION SECURE RULES
-      // Allow any authenticated user to CREATE a log (required for intrusion detection)
       allow create: if request.auth != null;
-      
-      // Allow ONLY the specific admin email to READ logs
-      allow read, list: if request.auth != null && request.auth.token.email == "admin@gmail.com";
-      
-      allow update, delete: if false;
+      allow read: if request.auth.token.email == "admin@gmail.com";
+    }
+
+    match /users/{userId} {
+      allow read, write: if request.auth != null;
     }
   }
 }
